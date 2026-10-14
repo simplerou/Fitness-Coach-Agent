@@ -1,0 +1,129 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#102820" />
+  <title>青禾训练助理 · V1.1</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#today" aria-label="青禾训练助理首页">
+        <span class="brand-mark">禾</span>
+        <span><strong>青禾</strong><small>训练助理 · V1.1</small></span>
+      </a>
+      <span class="local-badge"><i></i> 本机演示</span>
+    </header>
+
+    <main>
+      <section class="intro">
+        <p class="eyebrow">TRAIN WITH A LITTLE MORE CLARITY</p>
+        <h1>让今天的训练，<em>有据可循。</em></h1>
+        <p class="intro-copy">记录状态，查看一份基础计划。遇到不适，安全筛查会优先拦截训练建议。</p>
+        <div class="demo-notice"><span>演示版本</span>状态与训练记录保存在本机 PostgreSQL；安全暂停和计划会在重启后清空。请勿输入真实健康信息。</div>
+      </section>
+
+      <nav class="tabs" aria-label="主要功能">
+        <button class="tab active" data-page="today">今日</button>
+        <button class="tab" data-page="plan">周计划</button>
+        <button class="tab" data-page="log">训练记录</button>
+        <button class="tab" data-page="safety">安全筛查</button>
+      </nav>
+
+      <section class="page active" id="page-today">
+        <div class="section-heading"><div><p class="eyebrow">TODAY</p><h2>今天怎么练</h2></div><button class="button button-quiet" id="refresh-today">刷新状态</button></div>
+        <article class="status-card" id="today-card" aria-live="polite"><div class="loading-dot"></div><span>正在读取当前状态…</span></article>
+        <div class="grid two-col">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">CHECK-IN</p><h3>记录今天的状态</h3></div><span class="step-no">01</span></div>
+            <form id="signal-form" class="form-stack">
+              <fieldset><legend>主观状态</legend>
+                <label class="choice"><input type="radio" name="readiness" value="good" required /><span><b>状态不错</b><small>精力和平时差不多或更好</small></span></label>
+                <label class="choice"><input type="radio" name="readiness" value="okay" /><span><b>一般</b><small>不确定，或比平时略累</small></span></label>
+                <label class="choice"><input type="radio" name="readiness" value="poor" /><span><b>状态较差</b><small>明显疲惫、恢复不足</small></span></label>
+              </fieldset>
+              <div class="field-row">
+                <label class="field"><span>昨晚睡眠（小时，可不填）</span><input type="number" name="sleep_hours" min="0" max="24" step="0.25" placeholder="例如 7.5" /></label>
+                <label class="field"><span>静息心率（可不填）</span><input type="number" name="resting_hr" min="25" max="240" placeholder="例如 62" /></label>
+              </div>
+              <button class="button button-primary" type="submit">保存状态</button>
+            </form>
+          </article>
+          <article class="panel plan-peek">
+            <div class="panel-head"><div><p class="eyebrow">YOUR PLAN</p><h3>本周计划</h3></div><span class="step-no">02</span></div>
+            <div id="plan-summary" class="empty-state"><div class="empty-icon">↗</div><p>完成安全筛查后，生成一份基础周计划。</p><button class="text-button" data-goto="plan">前往周计划 →</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="page" id="page-plan">
+        <div class="section-heading"><div><p class="eyebrow">WEEKLY PLAN</p><h2>搭一份基础计划</h2></div><span class="tag">模板生成 · 可随时调整</span></div>
+        <div class="grid two-col">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">YOUR PREFERENCES</p><h3>告诉我你的安排</h3></div><span class="step-no">01</span></div>
+            <form id="plan-form" class="form-stack">
+              <label class="field"><span>目前的主要目标</span><select name="goal"><option value="fitness">综合体能</option><option value="strength">力量基础</option><option value="fat_loss">增加日常活动</option></select></label>
+              <label class="field"><span>每周计划训练天数</span><select name="days_per_week"><option value="2">每周 2 天</option><option value="3" selected>每周 3 天</option><option value="4">每周 4 天</option><option value="5">每周 5 天</option><option value="6">每周 6 天</option></select></label>
+              <button class="button button-primary" type="submit">生成本周计划 <span>↗</span></button>
+            </form>
+            <p class="fine-print">请先在“安全筛查”完成今日筛查。此计划是流程演示用的通用模板，不是医疗或个体化处方。</p>
+          </article>
+          <article class="panel result-panel"><div class="panel-head"><div><p class="eyebrow">PLAN PREVIEW</p><h3>计划预览</h3></div></div><div id="plan-result" class="empty-state"><div class="empty-icon">✳</div><p>你的周计划会显示在这里。</p></div></article>
+        </div>
+      </section>
+
+      <section class="page" id="page-log">
+        <div class="section-heading"><div><p class="eyebrow">TRAINING LOG</p><h2>练完，记一笔</h2></div><span class="tag">训练后记录</span></div>
+        <div class="grid two-col">
+          <article class="panel"><div class="panel-head"><div><p class="eyebrow">SESSION</p><h3>记录本次训练</h3></div><span class="step-no">01</span></div>
+            <form id="log-form" class="form-stack">
+              <label class="field"><span>训练日期</span><input type="date" name="training_date" required /></label>
+              <label class="field"><span>完成情况</span><select name="completion"><option value="completed">按计划完成</option><option value="partial">部分完成</option><option value="skipped">未进行训练</option></select></label>
+              <label class="field"><span>主观用力程度 RPE（1–10，可不填）</span><input type="number" name="rpe" min="1" max="10" placeholder="例如 6" /></label>
+              <label class="field hidden" id="skip-reason-wrap"><span>未完成原因</span><select name="skip_reason"><option value="">请选择</option><option value="no_time">没时间</option><option value="too_tired">太累</option><option value="discomfort">身体不适</option><option value="other">其他</option></select></label>
+              <label class="field"><span>补充说明（可不填）</span><textarea name="note" rows="2" maxlength="240" placeholder="只填写你愿意记录的内容"></textarea></label>
+              <button class="button button-primary" type="submit">保存训练记录</button>
+            </form>
+          </article>
+          <article class="panel"><div class="panel-head"><div><p class="eyebrow">RECENT</p><h3>最近记录</h3></div><button class="text-button" id="refresh-logs">刷新</button></div><div id="logs-list" class="empty-state"><p>还没有训练记录。</p></div></article>
+        </div>
+      </section>
+
+      <section class="page" id="page-safety">
+        <div class="section-heading"><div><p class="eyebrow">SAFETY FIRST</p><h2>先确认今天的状态</h2></div><span class="tag tag-warm">每次训练前</span></div>
+        <div class="safety-layout">
+          <article class="panel safety-panel">
+            <div class="safety-banner"><span class="safety-symbol">!</span><div><b>这不是医疗筛查或诊断</b><p>若你正在经历紧急或严重症状，请停止运动并及时联系当地急救或医疗服务。</p></div></div>
+            <form id="safety-form" class="form-stack">
+              <p class="form-intro">今天是否有以下情况？有任何一项、无法判断，或不愿回答时，请先暂停训练建议。</p>
+              <label class="check-row"><input type="checkbox" name="symptoms" value="chest_pain" /><span>胸痛或胸闷</span></label>
+              <label class="check-row"><input type="checkbox" name="symptoms" value="fainting" /><span>晕厥或接近晕厥</span></label>
+              <label class="check-row"><input type="checkbox" name="symptoms" value="dizziness" /><span>明显眩晕</span></label>
+              <label class="check-row"><input type="checkbox" name="symptoms" value="severe_joint_pain" /><span>严重关节疼痛</span></label>
+              <label class="check-row"><input type="checkbox" name="symptoms" value="other_discomfort" /><span>其他明显不适</span></label>
+              <label class="check-row"><input type="checkbox" name="symptoms" value="uncertain" /><span>无法判断是否存在上述情况</span></label>
+              <label class="confirm-row"><input type="checkbox" name="completed" required /><span>我已阅读以上说明，并完成今天的安全筛查。</span></label>
+              <button class="button button-primary" type="submit">提交安全筛查</button>
+            </form>
+            <form id="resolution-form" class="form-stack hidden">
+              <div class="hold-copy"><b>安全暂停仍生效</b><p>如果出现急性或明显症状，请先寻求专业医疗意见。只有确认已恢复并遵循专业人士意见后，才能申请解除暂停。</p></div>
+              <label class="confirm-row"><input type="checkbox" name="confirmed_recovery" required /><span>我确认已经恢复。</span></label>
+              <label class="confirm-row"><input type="checkbox" name="followed_professional_advice" required /><span>我已遵循专业人士的意见。</span></label>
+              <button class="button button-dark" type="submit">提交恢复确认</button>
+            </form>
+          </article>
+          <aside class="panel safety-aside"><p class="eyebrow">HOW IT WORKS</p><h3>安全规则先于训练建议</h3><ul><li>未完成筛查时，不显示训练建议。</li><li>报告不适或无法判断时，系统进入暂停状态。</li><li>暂停不会因刷新页面、生成计划或提交状态而解除。</li><li>服务重启后需重新完成安全筛查和生成计划。此演示不适合真实健康决策。</li></ul><div class="aside-note">如果症状严重、持续或加重，请优先联系专业医疗服务。</div></aside>
+        </div>
+      </section>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+    <footer><span>青禾训练助理 · V1.1</span><span>本地演示，不构成医疗建议</span></footer>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
+
+
