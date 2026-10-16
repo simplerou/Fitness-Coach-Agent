@@ -1,20 +1,20 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#102820" />
-  <title>青禾训练助理 · V1.1</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <title>青禾训练助理 · V1.9</title>
+  <link rel="stylesheet" href="/static/styles.css?v=1.9.7" />
 </head>
 <body>
   <div class="shell">
     <header class="topbar">
       <a class="brand" href="#today" aria-label="青禾训练助理首页">
         <span class="brand-mark">禾</span>
-        <span><strong>青禾</strong><small>训练助理 · V1.1</small></span>
+        <span><strong>青禾</strong><small>训练助理 · V1.9</small></span>
       </a>
-      <span class="local-badge"><i></i> 本机演示</span>
+      <div class="account-actions"><span class="account-name hidden" id="account-name"></span><button class="button button-quiet hidden" id="logout-button" type="button">退出登录</button><span class="local-badge"><i></i> 本机账号演示</span></div>
     </header>
 
     <main>
@@ -22,22 +22,25 @@
         <p class="eyebrow">TRAIN WITH A LITTLE MORE CLARITY</p>
         <h1>让今天的训练，<em>有据可循。</em></h1>
         <p class="intro-copy">记录状态，查看一份基础计划。遇到不适，安全筛查会优先拦截训练建议。</p>
-        <div class="demo-notice"><span>演示版本</span>状态与训练记录保存在本机 PostgreSQL；安全暂停和计划会在重启后清空。请勿输入真实健康信息。</div>
+        <div class="demo-notice"><span>演示版本</span>身体档案、状态、训练记录和每周计划按账号分别保存在本机 PostgreSQL；服务重启或切换账号后需重新筛查。健康资料未做应用层加密，请勿公开部署或填写不愿保存在本机的数据。</div>
       </section>
 
       <nav class="tabs" aria-label="主要功能">
         <button class="tab active" data-page="today">今日</button>
         <button class="tab" data-page="plan">周计划</button>
+        <button class="tab" data-page="profile">我的</button>
         <button class="tab" data-page="log">训练记录</button>
+        <button class="tab" data-page="review">周回顾</button>
         <button class="tab" data-page="safety">安全筛查</button>
       </nav>
 
+<!-- 今日页：显示状态卡、当天计划安排、手动状态输入和当前周计划摘要。 -->
       <section class="page active" id="page-today">
         <div class="section-heading"><div><p class="eyebrow">TODAY</p><h2>今天怎么练</h2></div><button class="button button-quiet" id="refresh-today">刷新状态</button></div>
         <article class="status-card" id="today-card" aria-live="polite"><div class="loading-dot"></div><span>正在读取当前状态…</span></article>
         <div class="grid two-col">
           <article class="panel">
-            <div class="panel-head"><div><p class="eyebrow">CHECK-IN</p><h3>记录今天的状态</h3></div><span class="step-no">01</span></div>
+            <div class="panel-head"><div><p class="eyebrow">CHECK-IN</p><h3 id="signal-panel-title">记录今天的状态</h3></div><span class="step-no">01</span></div>
             <form id="signal-form" class="form-stack">
               <fieldset><legend>主观状态</legend>
                 <label class="choice"><input type="radio" name="readiness" value="good" required /><span><b>状态不错</b><small>精力和平时差不多或更好</small></span></label>
@@ -50,14 +53,16 @@
               </div>
               <button class="button button-primary" type="submit">保存状态</button>
             </form>
+            <p id="rest-day-signal-note" class="fine-print hidden">今天是计划休息日，无需填写主观状态、睡眠或静息心率。安全筛查仍需完成。</p>
           </article>
           <article class="panel plan-peek">
             <div class="panel-head"><div><p class="eyebrow">YOUR PLAN</p><h3>本周计划</h3></div><span class="step-no">02</span></div>
-            <div id="plan-summary" class="empty-state"><div class="empty-icon">↗</div><p>完成安全筛查后，生成一份基础周计划。</p><button class="text-button" data-goto="plan">前往周计划 →</button></div>
+            <div id="plan-summary" class="empty-state"><div class="empty-icon">↗</div><p>完成安全筛查后，选择训练星期并生成一份基础周计划。</p><button class="text-button" data-goto="plan">前往周计划 →</button></div>
           </article>
         </div>
       </section>
 
+<!-- 周计划页：生成本周模板、浏览历史快照并展示计划说明。 -->
       <section class="page" id="page-plan">
         <div class="section-heading"><div><p class="eyebrow">WEEKLY PLAN</p><h2>搭一份基础计划</h2></div><span class="tag">模板生成 · 可随时调整</span></div>
         <div class="grid two-col">
@@ -65,15 +70,70 @@
             <div class="panel-head"><div><p class="eyebrow">YOUR PREFERENCES</p><h3>告诉我你的安排</h3></div><span class="step-no">01</span></div>
             <form id="plan-form" class="form-stack">
               <label class="field"><span>目前的主要目标</span><select name="goal"><option value="fitness">综合体能</option><option value="strength">力量基础</option><option value="fat_loss">增加日常活动</option></select></label>
-              <label class="field"><span>每周计划训练天数</span><select name="days_per_week"><option value="2">每周 2 天</option><option value="3" selected>每周 3 天</option><option value="4">每周 4 天</option><option value="5">每周 5 天</option><option value="6">每周 6 天</option></select></label>
+              <fieldset class="weekday-fieldset">
+                <legend>每周训练星期（选择 1–6 天）</legend>
+                <div class="weekday-grid">
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="1" checked /><span>周一</span></label>
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="2" /><span>周二</span></label>
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="3" checked /><span>周三</span></label>
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="4" /><span>周四</span></label>
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="5" checked /><span>周五</span></label>
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="6" /><span>周六</span></label>
+                  <label class="weekday-option"><input type="checkbox" name="training_weekdays" value="7" /><span>周日</span></label>
+                </div>
+                <p class="weekday-count" id="weekday-count" aria-live="polite">已选 3 天</p>
+              </fieldset>
+              <label class="field"><span>训练经验</span><select name="experience_level"><option value="beginner">刚开始训练</option><option value="some_experience">有一些经验</option><option value="experienced">经验较丰富</option></select></label>
+              <fieldset class="form-stack equipment-options">
+                <legend>可用器械（至少选择一项）</legend>
+                <label class="check-row"><input type="checkbox" name="equipment" value="bodyweight_only" checked /><span>仅自重</span></label>
+                <label class="check-row"><input type="checkbox" name="equipment" value="dumbbells" /><span>哑铃</span></label>
+                <label class="check-row"><input type="checkbox" name="equipment" value="resistance_bands" /><span>弹力带</span></label>
+                <label class="check-row"><input type="checkbox" name="equipment" value="gym" /><span>健身房常见器械</span></label>
+                <p class="fine-print">“仅自重”与其他器械选项互斥；可同时选择多种器械。</p>
+              </fieldset>
+              <label class="field"><span>单次训练时长</span><select name="session_minutes"><option value="20">约 20 分钟</option><option value="30" selected>约 30 分钟</option><option value="45">约 45 分钟</option><option value="60">约 60 分钟</option></select></label>
               <button class="button button-primary" type="submit">生成本周计划 <span>↗</span></button>
             </form>
-            <p class="fine-print">请先在“安全筛查”完成今日筛查。此计划是流程演示用的通用模板，不是医疗或个体化处方。</p>
+            <p class="fine-print">生成计划前需填写个人身体档案并完成今日安全筛查。年龄段会影响恢复提示；身高体重用于后续进展对照。</p>
           </article>
           <article class="panel result-panel"><div class="panel-head"><div><p class="eyebrow">PLAN PREVIEW</p><h3>计划预览</h3></div></div><div id="plan-result" class="empty-state"><div class="empty-icon">✳</div><p>你的周计划会显示在这里。</p></div></article>
         </div>
+        <article class="panel plan-history-panel">
+          <div class="panel-head"><div><p class="eyebrow">SAVED WEEKS</p><h3>历史周计划</h3></div><button class="text-button" id="refresh-plan-history" type="button">刷新</button></div>
+          <p class="fine-print">只显示本地档案起始周及之后实际保存的计划。回看历史计划前仍需完成今日安全筛查。</p>
+          <div id="plan-history-list" class="plan-history-list empty-state" aria-live="polite"><p>完成安全筛查后加载已保存计划。</p></div>
+          <button class="button button-quiet hidden" id="load-more-plans" type="button">加载更早计划</button>
+        </article>
+        <article class="panel plan-explanation-card" aria-live="polite">
+          <div class="panel-head"><div><p class="eyebrow">PLAN NOTES</p><h3>计划说明</h3></div><span class="tag">本地模板</span></div>
+          <div id="plan-explanation" class="plan-explanation-content"><div class="empty-state"><p>生成周计划后，这里会说明本周安排概况和通用执行提醒。</p></div></div>
+          <p class="fine-print">说明仅整理当前计划模板，不进行安全判断，也不是医疗或个体化处方。</p>
+        </article>
+      </section>
+      <!-- 我的页面：查看本机体验状态，并管理身体档案和体重历史。 -->
+      <section class="page" id="page-profile">
+        <div class="section-heading"><div><p class="eyebrow">MY PROFILE</p><h2>我的</h2></div><span class="tag" id="profile-account-tag">已登录</span></div>
+        <article class="panel user-center-card">
+          <div class="user-center-heading"><div class="user-avatar" aria-hidden="true">禾</div><div><p class="eyebrow">LOCAL ACCOUNT</p><h3 id="user-center-display-name">个人中心</h3><p id="user-center-username">当前已登录账号</p></div><span class="tag">本机账号</span></div>
+          <p class="fine-print">身体档案、训练计划和记录按账号分别保存。数据目前存于本机 PostgreSQL，不建议将此演示服务公开部署。</p>
+        </article>
+        <div class="grid two-col profile-dashboard">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">BODY PROFILE</p><h3>个人身体档案</h3></div><span class="step-no">01</span></div>
+            <div id="body-profile-summary" class="empty-state"><p>正在读取身体档案…</p></div>
+            <div class="profile-actions"><button class="button button-primary" id="edit-body-profile" type="button">填写身体档案</button><button class="text-button hidden" id="delete-body-profile" type="button">删除身体档案和体重历史</button></div>
+            <p class="fine-print">档案用于计划生成时的基础参考。年龄段会影响恢复提示；身高、体重及选填数据作为进展对照基线，不会单独用于判断体能或自动增加训练量。</p>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">WEIGHT HISTORY</p><h3>体重变化</h3></div><span class="step-no">02</span></div>
+            <div id="body-weight-history" class="empty-state"><p>保存身体档案后，这里会显示体重记录。</p></div>
+            <p class="fine-print">每次保存档案会记录当天体重；同一天重复保存只保留当天最新数值。</p>
+          </article>
+        </div>
       </section>
 
+<!-- 训练记录页：提交训练结果并查看最近保存的记录。 -->
       <section class="page" id="page-log">
         <div class="section-heading"><div><p class="eyebrow">TRAINING LOG</p><h2>练完，记一笔</h2></div><span class="tag">训练后记录</span></div>
         <div class="grid two-col">
@@ -91,19 +151,45 @@
         </div>
       </section>
 
+<!-- 周回顾页：选择一周并查看每日状态、日志和汇总。 -->
+      <section class="page" id="page-review">
+        <div class="section-heading"><div><p class="eyebrow">WEEKLY REVIEW</p><h2>回看这一周</h2></div><span class="tag">缺失数据按“未记录”显示</span></div>
+        <article class="panel review-controls">
+          <div class="week-picker">
+            <button class="button button-quiet" id="previous-week" type="button" aria-label="上一周">← 上一周</button>
+            <label class="field"><span>选择本周中的任意日期</span><input type="date" id="review-date" /></label>
+            <button class="button button-quiet" id="next-week" type="button" aria-label="下一周">下一周 →</button>
+            <button class="button button-quiet" id="current-week" type="button">回到本周</button>
+          </div>
+          <p class="fine-print">只能查看本地档案起始日及之后的记录。没有训练日志不代表休息；未填写的 RPE、睡眠或静息心率不参与平均或判断。</p>
+        </article>
+        <div class="review-range" id="review-range" aria-live="polite"></div>
+        <div class="review-stats" id="review-stats" aria-live="polite"></div>
+        <div class="review-days" id="review-days"><article class="panel empty-state"><p>正在读取本周记录…</p></article></div>
+      </section>
+
+<!-- 安全页：根据服务端状态显示筛查表、已通过状态或恢复确认。 -->
       <section class="page" id="page-safety">
         <div class="section-heading"><div><p class="eyebrow">SAFETY FIRST</p><h2>先确认今天的状态</h2></div><span class="tag tag-warm">每次训练前</span></div>
         <div class="safety-layout">
           <article class="panel safety-panel">
             <div class="safety-banner"><span class="safety-symbol">!</span><div><b>这不是医疗筛查或诊断</b><p>若你正在经历紧急或严重症状，请停止运动并及时联系当地急救或医疗服务。</p></div></div>
-            <form id="safety-form" class="form-stack">
-              <p class="form-intro">今天是否有以下情况？有任何一项、无法判断，或不愿回答时，请先暂停训练建议。</p>
+            <div id="safety-loading" class="safety-loading">正在读取当前服务的安全筛查状态…</div>
+            <div id="safety-complete" class="safety-complete hidden" aria-live="polite">
+              <span class="safety-complete-icon" aria-hidden="true">✓</span>
+              <div><b>当前已通过安全筛查</b><p>当前可以查看周计划。服务重启后需要重新筛查；身体状况发生变化时，也请重新筛查。</p>
+                <button id="restart-safety-check" class="button button-secondary" type="button">重新筛查</button>
+              </div>
+            </div>
+            <form id="safety-form" class="form-stack hidden">
+              <p class="form-intro">请明确选择“没有不适”，或勾选符合的情况。无法判断或不愿回答时，请先暂停训练建议。</p>
               <label class="check-row"><input type="checkbox" name="symptoms" value="chest_pain" /><span>胸痛或胸闷</span></label>
               <label class="check-row"><input type="checkbox" name="symptoms" value="fainting" /><span>晕厥或接近晕厥</span></label>
               <label class="check-row"><input type="checkbox" name="symptoms" value="dizziness" /><span>明显眩晕</span></label>
               <label class="check-row"><input type="checkbox" name="symptoms" value="severe_joint_pain" /><span>严重关节疼痛</span></label>
               <label class="check-row"><input type="checkbox" name="symptoms" value="other_discomfort" /><span>其他明显不适</span></label>
               <label class="check-row"><input type="checkbox" name="symptoms" value="uncertain" /><span>无法判断是否存在上述情况</span></label>
+              <label class="check-row no-symptoms-row"><input type="checkbox" id="no-symptoms" name="no_symptoms" /><span>我今天没有以上任何不适</span></label>
               <label class="confirm-row"><input type="checkbox" name="completed" required /><span>我已阅读以上说明，并完成今天的安全筛查。</span></label>
               <button class="button button-primary" type="submit">提交安全筛查</button>
             </form>
@@ -114,16 +200,65 @@
               <button class="button button-dark" type="submit">提交恢复确认</button>
             </form>
           </article>
-          <aside class="panel safety-aside"><p class="eyebrow">HOW IT WORKS</p><h3>安全规则先于训练建议</h3><ul><li>未完成筛查时，不显示训练建议。</li><li>报告不适或无法判断时，系统进入暂停状态。</li><li>暂停不会因刷新页面、生成计划或提交状态而解除。</li><li>服务重启后需重新完成安全筛查和生成计划。此演示不适合真实健康决策。</li></ul><div class="aside-note">如果症状严重、持续或加重，请优先联系专业医疗服务。</div></aside>
+          <aside class="panel safety-aside"><p class="eyebrow">HOW IT WORKS</p><h3>安全规则先于训练建议</h3><ul><li>未完成筛查时，不显示训练建议。</li><li>报告不适或无法判断时，系统进入暂停状态。</li><li>暂停不会因刷新页面、生成计划或提交状态而解除。</li><li>服务重启后需重新完成安全筛查；本周已保存的计划会在筛查通过后恢复。此演示不适合真实健康决策。</li></ul><div class="aside-note">如果症状严重、持续或加重，请优先联系专业医疗服务。</div></aside>
         </div>
       </section>
 
-      <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    </main>
-    <footer><span>青禾训练助理 · V1.1</span><span>本地演示，不构成医疗建议</span></footer>
+      <div class="modal-backdrop hidden" id="notice-modal" role="presentation">
+        <section class="alert-modal" data-kind="info" role="alertdialog" aria-modal="true" aria-labelledby="notice-modal-title" aria-describedby="notice-modal-message">
+          <span class="alert-modal-icon" id="notice-modal-icon" aria-hidden="true">i</span>
+          <h2 id="notice-modal-title">提示</h2>
+          <p id="notice-modal-message"></p>
+          <button class="button button-primary" id="notice-modal-close" type="button">知道了</button>
+        </section>
+      </div>
+      <div class="modal-backdrop hidden" id="body-profile-modal" role="presentation">
+        <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="body-profile-modal-title" aria-describedby="body-profile-modal-description">
+          <button class="modal-close" id="close-body-profile-modal" type="button" aria-label="关闭身体档案">×</button>
+          <p class="eyebrow">GETTING STARTED</p><h2 id="body-profile-modal-title">先认识一下你的训练起点</h2>
+          <p id="body-profile-modal-description" class="profile-modal-intro">填写身体基础数据，后续计划可以参考这些信息。带“选填”的项目可以留空；你也可以跳过，之后在“我的”页面继续填写。</p>
+          <form id="body-profile-form" class="form-stack">
+            <label class="field"><span>年龄段</span><select name="age_band" required><option value="">请选择</option><option value="under_18">未满 18 岁</option><option value="18_29">18–29 岁</option><option value="30_44">30–44 岁</option><option value="45_59">45–59 岁</option><option value="60_plus">60 岁及以上</option></select></label>
+            <div class="field-row"><label class="field"><span>身高（厘米）</span><input type="number" name="height_cm" min="100" max="230" step="0.1" required placeholder="例如 170" /></label><label class="field"><span>当前体重（千克）</span><input type="number" name="weight_kg" min="25" max="300" step="0.1" required placeholder="例如 65" /></label></div>
+            <div class="field-row"><label class="field"><span>体脂率（选填，%）</span><input type="number" name="body_fat_percent" min="3" max="70" step="0.1" placeholder="有测量数据再填写" /></label><label class="field"><span>腰围（选填，厘米）</span><input type="number" name="waist_cm" min="30" max="200" step="0.1" placeholder="有测量数据再填写" /></label></div>
+            <div class="profile-modal-actions"><button class="button button-quiet" id="skip-body-profile" type="button">跳过，稍后填写</button><button class="button button-primary" type="submit">保存并继续</button></div>
+          </form>
+          <p class="fine-print">资料保存在本机 PostgreSQL，并按账号隔离。此演示版不适合公开部署或真实健康决策。</p>
+        </section>
+      </div>      <div class="modal-backdrop hidden" id="body-profile-delete-modal" role="presentation">
+        <section class="alert-modal" role="alertdialog" aria-modal="true" aria-labelledby="body-profile-delete-title" aria-describedby="body-profile-delete-message">
+          <span class="alert-modal-icon" aria-hidden="true">!</span>
+          <h2 id="body-profile-delete-title">删除个人身体档案？</h2>
+          <p id="body-profile-delete-message">身体档案和体重历史会被删除；训练计划和训练日志会保留。</p>
+          <div class="confirm-modal-actions"><button class="button button-quiet" id="cancel-body-profile-delete" type="button">取消</button><button class="button button-danger" id="confirm-body-profile-delete" type="button">确认删除</button></div>
+        </section>
+      </div>
+      <div class="modal-backdrop auth-backdrop" id="auth-gate" role="presentation">
+        <section class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description">
+          <div class="auth-brand-mark" aria-hidden="true">禾</div>
+          <p class="eyebrow">FITNESS COACH</p>
+          <h2 id="auth-title">欢迎使用青禾</h2>
+          <p id="auth-description" class="auth-description">登录后查看你自己的身体档案、训练计划和记录。</p>
+          <div class="auth-mode-tabs" role="tablist" aria-label="登录或注册">
+            <button class="auth-mode active" type="button" data-auth-mode="login" role="tab" aria-selected="true">登录</button>
+            <button class="auth-mode" type="button" data-auth-mode="register" role="tab" aria-selected="false">注册账号</button>
+          </div>
+          <form id="auth-form" class="form-stack">
+            <label class="field"><span>用户名</span><input name="username" type="text" required minlength="3" maxlength="24" autocomplete="username" pattern="[A-Za-z0-9_.-]+" placeholder="3–24 位字母、数字或 . _ -" /></label>
+            <label class="field hidden" id="display-name-field"><span>昵称（选填）</span><input name="display_name" type="text" maxlength="32" autocomplete="nickname" placeholder="在“我的”页面显示" /></label>
+            <label class="field"><span>密码</span><input name="password" type="password" required minlength="8" maxlength="128" autocomplete="current-password" placeholder="至少 8 位" /></label>
+            <label class="field hidden" id="password-confirm-field"><span>确认密码</span><input name="password_confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="再输入一次密码" /></label>
+            <p class="auth-error" id="auth-error" aria-live="polite"></p>
+            <button class="button button-primary auth-submit" id="auth-submit" type="submit">登录</button>
+          </form>
+          <p class="fine-print">本机演示账号。密码以不可逆散列形式保存；忘记密码时目前需由管理员处理数据库账号。</p>
+        </section>
+      </div>    </main>
+    <footer><span>青禾训练助理 · V1.9</span><span>本地演示，不构成医疗建议</span></footer>
   </div>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=1.9.11" defer></script>
 </body>
 </html>
+
 
 
