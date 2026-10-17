@@ -66,6 +66,7 @@ class TrainingLogRecord(Base):
     rpe: Mapped[int | None] = mapped_column(Integer, nullable=True)
     skip_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    planned_session_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class LocalProfileRecord(Base):
@@ -86,6 +87,7 @@ class BodyProfileRecord(Base):
     age_band: Mapped[str] = mapped_column(String(16), nullable=False)
     height_cm: Mapped[float] = mapped_column(Float, nullable=False)
     weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    target_weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     body_fat_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     waist_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -136,6 +138,7 @@ class LocalSafetyStateRecord(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
     hold_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     hold_requires_professional_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hold_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
@@ -152,6 +155,13 @@ def initialize_database() -> None:
     with engine.begin() as connection:
         for table_name in TENANT_TABLES:
             connection.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS user_id INTEGER'))
+        connection.execute(text('ALTER TABLE local_safety_state ADD COLUMN IF NOT EXISTS hold_date DATE'))
+        connection.execute(text('ALTER TABLE body_profiles ADD COLUMN IF NOT EXISTS target_weight_kg FLOAT'))
+        connection.execute(text('ALTER TABLE training_logs ADD COLUMN IF NOT EXISTS planned_session_title VARCHAR(120)'))
+        connection.execute(text(
+            'UPDATE local_safety_state SET hold_date = CURRENT_DATE '
+            'WHERE hold_active = TRUE AND hold_date IS NULL'
+        ))
 
 
 def claim_legacy_data_for_first_user(db, user_id: int) -> None:
@@ -203,7 +213,7 @@ def initialize_user_defaults(db, user_id: int, registered_on: date) -> None:
 
     safety_state = db.scalar(select(LocalSafetyStateRecord).where(LocalSafetyStateRecord.user_id == user_id))
     if safety_state is None:
-        db.add(LocalSafetyStateRecord(user_id=user_id, hold_active=False, hold_requires_professional_confirmation=False))
+        db.add(LocalSafetyStateRecord(user_id=user_id, hold_active=False, hold_requires_professional_confirmation=False, hold_date=None))
 
     preferences = db.scalar(select(TrainingPreferencesRecord).where(TrainingPreferencesRecord.user_id == user_id))
     if preferences is None:

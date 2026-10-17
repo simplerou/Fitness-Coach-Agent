@@ -1,5 +1,5 @@
 ﻿# FastAPI 应用入口：定义本机演示版 HTTP 接口，并连接页面与 PostgreSQL。
-# 安全筛查状态暂存于服务进程内；计划、状态和训练日志保存在数据库。
+# 确认通过日期暂存于服务进程内；当日暂停状态、计划、状态和训练日志保存在数据库。
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -120,8 +120,13 @@ class BodyProfileRequest(BaseModel):
     age_band: Literal["under_18", "18_29", "30_44", "45_59", "60_plus"]
     height_cm: float = Field(ge=100, le=230)
     weight_kg: float = Field(ge=25, le=300)
+    target_weight_kg: float | None = Field(default=None, ge=25, le=300)
     body_fat_percent: float | None = Field(default=None, ge=3, le=70)
     waist_cm: float | None = Field(default=None, ge=30, le=200)
+
+
+class BodyWeightRequest(BaseModel):
+    weight_kg: float = Field(ge=25, le=300)
 
 
 class PlanRequest(BaseModel):
@@ -177,28 +182,19 @@ def authenticated_user_id(request: Request) -> int:
 def week_start_for(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
-# 所有受保护接口先查数据库暂停标记，再检查本机自然日是否完成筛查。
-def load_local_safety_state(db, user_id: int) -> LocalSafetyStateRecord:
-    state = db.scalar(select(LocalSafetyStateRecord).where(LocalSafetyStateRecord.user_id == user_id))
-    if state is None:
-        # 初始化时应创建该行；缺失时不能按“没有暂停”放行。
-        raise HTTPException(status_code=503, detail="本地安全状态缺失，请重启服务初始化数据库后重试。")
-    return state
-
-
-def require_clear_safety_screen(user_id: int) -> None:
+# 仅今日训练相关接口检查确认状态；周计划、历史和档案接口保持可访问。
+def require_clear_safety_screen(user_id: int, action_date: date | None = None) -> None:
+    action_date = action_date or date.today()
+    if action_date != date.today():
+        return
     with SessionLocal() as db:
-        safety_state = load_local_safety_state(db, user_id)
-        if safety_state.hold_active:
-            raise HTTPException(
-                status_code=423,
-                detail="安全暂停仍生效。请先按页面提示寻求专业意见并完成恢复确认。",
-            )
-    if SCREENING_DATES.get(user_id) != date.today():
-        raise HTTPException(
-            status_code=409,
-            detail="请先完成今天的安全筛查；未完成前不提供训练建议。",
-        )
+        safety_state = db.scalar(select(LocalSafetyStateRecord).where(LocalSafetyStateRecord.user_id == user_id))
+        if safety_state is None:
+            raise HTTPException(status_code=503, detail="本地安全状态缺失，请重启服务初始化数据库后重试。")
+        if safety_state.hold_active and safety_state.hold_date == action_date:
+            raise HTTPException(status_code=423, detail="今天的训练建议已暂停；请休息，并在新的一天重新确认。")
+    if SCREENING_DATES.get(user_id) != action_date:
+        raise HTTPException(status_code=409, detail="请先在今日页面确认身体状态，再记录今天的训练状态。")
 
 @app.post("/api/auth/register")
 def register_account(payload: RegisterRequest, request: Request) -> dict:
@@ -278,73 +274,52 @@ async def database_error_handler(_, __):
     )
 
 
-# 筛查通过日期放在进程内；命中不适时先持久化暂停，再返回给前端。
+# 每次服务启动后需要重新确认；命中不适后暂停当日训练建议，次日可重新确认。
 @app.post("/api/safety-check")
 def safety_check(payload: SafetyCheck, user_id: int = Depends(authenticated_user_id)) -> dict:
-    if not payload.completed:
-        SCREENING_DATES.pop(user_id, None)
-
+    today = date.today()
+    SCREENING_DATES.pop(user_id, None)
     with SessionLocal() as db:
-        safety_state = load_local_safety_state(db, user_id)
-        if safety_state.hold_active:
-            SCREENING_DATES.pop(user_id, None)
+        safety_state = db.scalar(select(LocalSafetyStateRecord).where(LocalSafetyStateRecord.user_id == user_id))
+        if safety_state is None:
+            raise HTTPException(status_code=503, detail="本地安全状态缺失，请重启服务初始化数据库后重试。")
+        if safety_state.hold_active and safety_state.hold_date == today:
             return {
                 "status": "stop",
-                "message": "安全暂停仍生效。请先按专业意见确认恢复，再重新完成筛查。",
+                "screening_date": today.isoformat(),
+                "message": "今天的训练建议已暂停，请休息。若出现紧急或严重症状，请及时联系当地急救或医疗服务。",
                 "symptoms": [],
             }
-
+        if not payload.completed:
+            return {"status": "ask", "message": "请确认今天的身体感受。", "symptoms": []}
         if payload.no_symptoms and payload.symptoms:
-            SCREENING_DATES.pop(user_id, None)
-            raise HTTPException(status_code=422, detail="不能同时选择“没有不适”和具体不适选项，请检查后重选。")
-
+            raise HTTPException(status_code=422, detail="不能同时选择“没有不适”和“有不适或无法判断”。")
         if payload.symptoms:
-            SCREENING_DATES.pop(user_id, None)
             safety_state.hold_active = True
-            safety_state.hold_requires_professional_confirmation = True
+            safety_state.hold_date = today
+            safety_state.hold_requires_professional_confirmation = False
             db.commit()
             labels = [SYMPTOM_LABELS[item] for item in payload.symptoms]
             return {
                 "status": "stop",
-                "message": "请停止本次训练，不要依据本工具继续运动；胸部不适、晕厥、明显眩晕或严重疼痛等情况应及时寻求医疗帮助。",
+                "screening_date": today.isoformat(),
+                "message": "今天先暂停训练建议并休息。若症状紧急、严重、持续或加重，请及时联系医疗服务。",
                 "symptoms": labels,
             }
-
         if not payload.no_symptoms:
-            SCREENING_DATES.pop(user_id, None)
-            return {
-                "status": "ask",
-                "message": "请选择“我今天没有以上任何不适”，或勾选符合的情况；未明确选择前不会通过安全筛查。",
-                "symptoms": [],
-            }
-
-    SCREENING_DATES[user_id] = date.today()
-    return {
-        "status": "clear",
-        "screening_date": SCREENING_DATES[user_id].isoformat(),
-        "message": "筛查已完成。本工具不能诊断疾病，也不能保证训练安全。",
-        "symptoms": [],
-    }
-# 恢复确认写回数据库；暂停解除后清除筛查日期，必须重新筛查。
-@app.post("/api/safety-resolution")
-def safety_resolution(payload: SafetyResolution, user_id: int = Depends(authenticated_user_id)) -> dict:
-    SCREENING_DATES.pop(user_id, None)
-    with SessionLocal() as db:
-        safety_state = load_local_safety_state(db, user_id)
-        if not safety_state.hold_active:
-            raise HTTPException(status_code=409, detail="当前没有待处理的安全暂停。")
-        if not payload.confirmed_recovery or (
-            safety_state.hold_requires_professional_confirmation
-            and not payload.followed_professional_advice
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="解除安全暂停前，需确认已恢复并遵循专业人士意见。",
-            )
+            return {"status": "ask", "message": "请确认今天是否有明显不适。", "symptoms": []}
         safety_state.hold_active = False
+        safety_state.hold_date = None
         safety_state.hold_requires_professional_confirmation = False
         db.commit()
-    return {"status": "resolved", "message": "暂停已解除。请重新完成当日安全筛查。"}
+    SCREENING_DATES[user_id] = today
+    return {
+        "status": "clear",
+        "screening_date": today.isoformat(),
+        "message": "今日身体状态已确认。",
+        "symptoms": [],
+    }
+
 @app.post("/api/daily-signal")
 def save_daily_signal(payload: DailySignal, user_id: int = Depends(authenticated_user_id)) -> dict:
     require_clear_safety_screen(user_id)
@@ -370,7 +345,6 @@ def save_daily_signal(payload: DailySignal, user_id: int = Depends(authenticated
 # 当前周计划从数据库读取；没有本周记录时返回空状态，不生成默认计划。
 @app.get("/api/plan/current")
 def current_week_plan(user_id: int = Depends(authenticated_user_id)) -> dict:
-    require_clear_safety_screen(user_id)
     week_start = week_start_for(date.today())
     with SessionLocal() as db:
         record = db.scalar(select(WeeklyPlanRecord).where(WeeklyPlanRecord.user_id == user_id, WeeklyPlanRecord.week_start == week_start))
@@ -388,7 +362,6 @@ def plan_history(
     before_week_start: date | None = None,
     user_id: int = Depends(authenticated_user_id),
 ) -> dict:
-    require_clear_safety_screen(user_id)
     if before_week_start is not None and before_week_start.weekday() != 0:
         raise HTTPException(status_code=422, detail="分页日期必须是周一。")
 
@@ -456,12 +429,31 @@ def get_body_profile(user_id: int = Depends(authenticated_user_id)) -> dict:
             "age_band": profile.age_band,
             "height_cm": profile.height_cm,
             "weight_kg": profile.weight_kg,
+            "target_weight_kg": profile.target_weight_kg,
             "body_fat_percent": profile.body_fat_percent,
             "waist_cm": profile.waist_cm,
             "updated_at": profile.updated_at.isoformat(),
         }
         weights = [{"date": row.recorded_on.isoformat(), "weight_kg": row.weight_kg} for row in history]
     return {"profile": serialized, "weight_history": weights}
+
+
+@app.post("/api/body-weight")
+def save_body_weight(payload: BodyWeightRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
+    """单独记录今日体重，并同步更新当前档案中的体重。"""
+    today = date.today()
+    with SessionLocal() as db:
+        profile = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
+        if profile is None:
+            raise HTTPException(status_code=409, detail="请先填写身体档案，再记录体重。")
+        record = db.get(BodyWeightHistoryRecord, (user_id, today))
+        if record is None:
+            db.add(BodyWeightHistoryRecord(user_id=user_id, recorded_on=today, weight_kg=payload.weight_kg))
+        else:
+            record.weight_kg = payload.weight_kg
+        profile.weight_kg = payload.weight_kg
+        db.commit()
+    return {"ok": True, "recorded_on": today.isoformat(), "weight_kg": payload.weight_kg, "message": "今日体重已记录。"}
 
 
 @app.put("/api/body-profile")
@@ -499,7 +491,6 @@ def delete_body_profile(user_id: int = Depends(authenticated_user_id)) -> dict:
 
 @app.get("/api/plan/preferences")
 def get_plan_preferences(user_id: int = Depends(authenticated_user_id)) -> dict:
-    require_clear_safety_screen(user_id)
     with SessionLocal() as db:
         record = db.scalar(select(TrainingPreferencesRecord).where(TrainingPreferencesRecord.user_id == user_id))
         schedule = db.scalar(select(TrainingSchedulePreferencesRecord).where(TrainingSchedulePreferencesRecord.user_id == user_id))
@@ -512,7 +503,6 @@ def get_plan_preferences(user_id: int = Depends(authenticated_user_id)) -> dict:
 
 @app.post("/api/plan")
 def create_plan(payload: PlanRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
-    require_clear_safety_screen(user_id)
     with SessionLocal() as db:
         body_profile = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
     if body_profile is None:
@@ -595,7 +585,12 @@ def create_plan(payload: PlanRequest, user_id: int = Depends(authenticated_user_
         "session_minutes": payload.session_minutes,
         "sessions": sessions,
         # 计划快照只保留所用档案时间及选填字段是否存在，不复制身体测量值。
-        "body_profile_context": {"personal_profile_used": True},
+        "body_profile_context": {
+            "personal_profile_used": True,
+            "height_cm": body_profile.height_cm,
+            "weight_kg": body_profile.weight_kg,
+            "target_weight_kg": body_profile.target_weight_kg,
+        },
         "notice": "这是用于验证流程的通用示例，不是医疗或个体化处方。请结合自身能力及专业人士意见调整。",
     }
     week_start = week_start_for(date.today())
@@ -691,31 +686,16 @@ def serialize_today_schedule(plan_data: dict | None, selected_day: date) -> dict
     }
 
 
-# 今日状态先检查数据库暂停，再检查本地自然日筛查；过期后不返回训练条目。
+# 今日接口返回确认状态；暂停只影响当天安排，不影响周计划或历史查看。
 @app.get("/api/today")
 def today(user_id: int = Depends(authenticated_user_id)) -> dict:
-    with SessionLocal() as db:
-        safety_state = load_local_safety_state(db, user_id)
-        if safety_state.hold_active:
-            return {
-                "level": "stop",
-                "message": "安全暂停生效。请停止训练并按提示寻求专业帮助。",
-                "plan_items": [],
-                "reasons": ["安全筛查命中暂停条件"],
-            }
-    if SCREENING_DATES.get(user_id) != date.today():
-        SCREENING_DATES.pop(user_id, None)
-        return {
-            "level": "ask",
-            "message": "请先完成今日安全筛查。",
-            "plan_items": [],
-            "reasons": ["今日安全筛查尚未完成"],
-        }
-
     selected_day = date.today()
     week_start = week_start_for(selected_day)
     with SessionLocal() as db:
-        plan_record = db.scalar(select(WeeklyPlanRecord).where(WeeklyPlanRecord.user_id == user_id, WeeklyPlanRecord.week_start == week_start))
+        plan_record = db.scalar(select(WeeklyPlanRecord).where(
+            WeeklyPlanRecord.user_id == user_id,
+            WeeklyPlanRecord.week_start == week_start,
+        ))
         today_schedule = serialize_today_schedule(
             plan_record.plan_data if plan_record is not None else None,
             selected_day,
@@ -724,22 +704,45 @@ def today(user_id: int = Depends(authenticated_user_id)) -> dict:
             return {
                 "level": "rest_day",
                 "screening_date": selected_day.isoformat(),
-                "message": "今天是当前周计划中的休息日，无需提交今日状态记录。",
+                "message": "今天是当前周计划中的休息日，无需填写训练状态。",
                 "today_schedule": today_schedule,
                 "plan_items": [],
-                "reasons": ["休息日无需填写主观状态、睡眠或静息心率"],
+                "reasons": ["计划休息日无需提交训练状态"],
             }
 
-        signal_record = db.scalar(select(DailySignalRecord).where(DailySignalRecord.user_id == user_id, DailySignalRecord.signal_date == selected_day))
+        safety_state = db.scalar(select(LocalSafetyStateRecord).where(LocalSafetyStateRecord.user_id == user_id))
+        if safety_state is None:
+            raise HTTPException(status_code=503, detail="本地安全状态缺失，请重启服务初始化数据库后重试。")
+        if safety_state.hold_active and safety_state.hold_date == selected_day:
+            return {
+                "level": "stop",
+                "screening_date": selected_day.isoformat(),
+                "message": "今天的训练建议已暂停，请休息。周计划和历史记录仍可查看。",
+                "plan_items": [],
+                "reasons": ["今天报告有不适或无法判断身体状态"],
+            }
+        if SCREENING_DATES.get(user_id) != selected_day:
+            SCREENING_DATES.pop(user_id, None)
+            return {
+                "level": "ask",
+                "message": "请先在上方小模块确认今天的身体感受。",
+                "plan_items": [],
+                "reasons": ["完成确认后再显示今天的训练安排"],
+            }
+
+        signal_record = db.scalar(select(DailySignalRecord).where(
+            DailySignalRecord.user_id == user_id,
+            DailySignalRecord.signal_date == selected_day,
+        ))
         signal = (
             {
                 "readiness": signal_record.readiness,
                 "sleep_hours": signal_record.sleep_hours,
                 "resting_hr": signal_record.resting_hr,
             }
-            if signal_record
-            else None
+            if signal_record else None
         )
+
     if signal is None:
         return {
             "level": "insufficient_data",
@@ -775,18 +778,53 @@ def get_registration_date(db, user_id: int) -> date:
 # 保存一条训练日志，并拒绝早于本地档案起始日的记录。
 @app.post("/api/log")
 def create_log(payload: TrainingLog, user_id: int = Depends(authenticated_user_id)) -> dict:
-    require_clear_safety_screen(user_id)
+    require_clear_safety_screen(user_id, payload.training_date)
     if payload.completion == "skipped" and payload.skip_reason is None:
         raise HTTPException(status_code=422, detail="未完成训练时，请选择未完成原因。")
     with SessionLocal() as db:
         registration_date = get_registration_date(db, user_id)
         if payload.training_date < registration_date:
             raise HTTPException(status_code=422, detail="训练日期早于本地档案起始日期，不能保存该记录。")
-        record = TrainingLogRecord(user_id=user_id, **payload.model_dump())
+        plan_record = db.scalar(select(WeeklyPlanRecord).where(
+            WeeklyPlanRecord.user_id == user_id,
+            WeeklyPlanRecord.week_start == week_start_for(payload.training_date),
+        ))
+        schedule = serialize_today_schedule(
+            plan_record.plan_data if plan_record is not None else None,
+            payload.training_date,
+        )
+        planned_session = schedule.get("session") if schedule.get("status") == "training" else None
+        planned_title = planned_session.get("title") if isinstance(planned_session, dict) else None
+        record = TrainingLogRecord(
+            user_id=user_id,
+            **payload.model_dump(),
+            planned_session_title=planned_title,
+        )
         db.add(record)
         db.commit()
     entry = payload.model_dump(mode="json")
-    return {"ok": True, "log": entry, "message": "训练记录已保存到本机 PostgreSQL 数据库。"}
+    entry["planned_session_title"] = planned_title
+    plan_message = f"已关联计划训练：{planned_title}。" if planned_title else ""
+    return {"ok": True, "log": entry, "message": "训练记录已保存到本机 PostgreSQL 数据库。" + plan_message}
+
+
+# 根据记录日期读取对应周快照，供训练记录表单显示计划安排。
+@app.get("/api/plan/session")
+def plan_session_for_date(
+    training_date: date | None = Query(default=None),
+    user_id: int = Depends(authenticated_user_id),
+) -> dict:
+    selected_day = training_date or date.today()
+    with SessionLocal() as db:
+        registration_date = get_registration_date(db, user_id)
+        if selected_day < registration_date:
+            return {"training_date": selected_day.isoformat(), "status": "before_registration", "session": None}
+        record = db.scalar(select(WeeklyPlanRecord).where(
+            WeeklyPlanRecord.user_id == user_id,
+            WeeklyPlanRecord.week_start == week_start_for(selected_day),
+        ))
+        schedule = serialize_today_schedule(record.plan_data if record is not None else None, selected_day)
+    return {"training_date": selected_day.isoformat(), **schedule}
 
 
 # 按日期倒序读取日志；查询结果不会早于本地档案起始日。
@@ -817,6 +855,7 @@ def list_logs(
                 "rpe": record.rpe,
                 "skip_reason": record.skip_reason,
                 "note": record.note,
+                "planned_session_title": record.planned_session_title,
             }
             for record in records
         ]
@@ -852,6 +891,11 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
             )
             .order_by(TrainingLogRecord.training_date, TrainingLogRecord.id)
         ).all()
+        plan_record = db.scalar(select(WeeklyPlanRecord).where(
+            WeeklyPlanRecord.user_id == user_id,
+            WeeklyPlanRecord.week_start == monday,
+        ))
+        plan_data = plan_record.plan_data if plan_record is not None else None
 
     signals_by_day = {record.signal_date: record for record in signals}
     logs_by_day: dict[date, list[TrainingLogRecord]] = {}
@@ -865,14 +909,64 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
         if record.rpe is not None:
             rpe_values.append(record.rpe)
 
+    raw_weekdays = plan_data.get("training_weekdays") if isinstance(plan_data, dict) else None
+    planned_weekdays = {
+        weekday for weekday in raw_weekdays
+        if type(weekday) is int and 1 <= weekday <= 7
+    } if isinstance(raw_weekdays, list) else set()
+    planned_counts = {"completed": 0, "partial": 0, "skipped": 0, "unlogged": 0}
+    planned_date_set = {
+        monday + timedelta(days=weekday - 1)
+        for weekday in planned_weekdays
+        if monday + timedelta(days=weekday - 1) >= registration_date
+    }
+    # Logs keep their original plan association if the user later regenerates that week's plan.
+    planned_date_set.update(
+        record.training_date
+        for record in logs
+        if record.training_date >= registration_date and record.planned_session_title
+    )
+    planned_dates = sorted(planned_date_set)
+    planned_elapsed_dates = []
+    for planned_date in planned_dates:
+        day_logs = logs_by_day.get(planned_date, [])
+        if planned_date > date.today() or (planned_date == date.today() and not day_logs):
+            continue
+        planned_elapsed_dates.append(planned_date)
+        if any(log.completion == "completed" for log in day_logs):
+            planned_counts["completed"] += 1
+        elif any(log.completion == "partial" for log in day_logs):
+            planned_counts["partial"] += 1
+        elif any(log.completion == "skipped" for log in day_logs):
+            planned_counts["skipped"] += 1
+        else:
+            planned_counts["unlogged"] += 1
+
+    plan_sessions = plan_data.get("sessions", []) if isinstance(plan_data, dict) else []
+    sessions_by_weekday = {
+        item.get("weekday"): item
+        for item in plan_sessions
+        if isinstance(item, dict) and type(item.get("weekday")) is int
+    } if isinstance(plan_sessions, list) else {}
+
     days = []
     for offset in range(7):
         day = monday + timedelta(days=offset)
         signal = signals_by_day.get(day)
         day_logs = logs_by_day.get(day, [])
+        planned_item = sessions_by_weekday.get(day.isoweekday())
+        saved_log_title = next(
+            (record.planned_session_title for record in reversed(day_logs) if record.planned_session_title),
+            None,
+        )
+        planned_title = saved_log_title or (planned_item.get("title") if planned_item else None)
+        day_schedule = serialize_today_schedule(plan_data, day)
         days.append({
             "date": day.isoformat(),
             "before_registration": day < registration_date,
+            "plan_status": "training" if saved_log_title else day_schedule["status"],
+            "planned_session_title": planned_title,
+            "is_planned_training_day": day in planned_dates,
             "signal": None if signal is None else {
                 "readiness": signal.readiness,
                 "sleep_hours": signal.sleep_hours,
@@ -883,6 +977,7 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
                 "rpe": record.rpe,
                 "skip_reason": record.skip_reason,
                 "note": record.note,
+                "planned_session_title": record.planned_session_title,
             } for record in day_logs],
         })
 
@@ -897,23 +992,12 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
             "skipped_count": completion_counts["skipped"],
             "average_rpe": round(sum(rpe_values) / len(rpe_values), 1) if rpe_values else None,
             "rpe_count": len(rpe_values),
+            "planned_day_count": len(planned_dates),
+            "planned_elapsed_day_count": len(planned_elapsed_dates),
+            "planned_completed_count": planned_counts["completed"],
+            "planned_partial_count": planned_counts["partial"],
+            "planned_skipped_count": planned_counts["skipped"],
+            "planned_unlogged_count": planned_counts["unlogged"],
         },
         "days": days,
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
