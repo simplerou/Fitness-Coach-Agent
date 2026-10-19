@@ -92,6 +92,7 @@ class DietProfileRecord(Base):
     __tablename__ = "diet_profiles"
 
     user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
+    # Legacy demographic and measurement columns stay mapped for old databases; current reads use body_profiles.
     age_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
     biological_sex: Mapped[str | None] = mapped_column(String(16), nullable=True)
     muscle_mass_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -101,6 +102,7 @@ class DietProfileRecord(Base):
     activity_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     training_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     training_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    training_end_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     dietary_preference: Mapped[str | None] = mapped_column(String(48), nullable=True)
     allergies: Mapped[str | None] = mapped_column(Text, nullable=True)
     allergies_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -111,6 +113,7 @@ class DietProfileRecord(Base):
     cooking_access: Mapped[str | None] = mapped_column(String(24), nullable=True)
     eating_out_per_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
     budget_note: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    water_target_ml: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class DietDayReviewRecord(Base):
@@ -155,6 +158,8 @@ class BodyProfileRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
     age_band: Mapped[str] = mapped_column(String(16), nullable=False)
+    age_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    biological_sex: Mapped[str | None] = mapped_column(String(16), nullable=True)
     height_cm: Mapped[float] = mapped_column(Float, nullable=False)
     weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
     target_weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -228,9 +233,26 @@ def initialize_database() -> None:
             connection.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS user_id INTEGER'))
         connection.execute(text('ALTER TABLE local_safety_state ADD COLUMN IF NOT EXISTS hold_date DATE'))
         connection.execute(text('ALTER TABLE body_profiles ADD COLUMN IF NOT EXISTS target_weight_kg FLOAT'))
+        connection.execute(text('ALTER TABLE body_profiles ADD COLUMN IF NOT EXISTS age_years INTEGER'))
+        connection.execute(text('ALTER TABLE body_profiles ADD COLUMN IF NOT EXISTS biological_sex VARCHAR(16)'))
+        # Move demographic values users already entered in the diet form into their body profile.
+        connection.execute(text(
+            'UPDATE body_profiles AS body SET '
+            'age_years = COALESCE(body.age_years, diet.age_years), '
+            'biological_sex = COALESCE(body.biological_sex, diet.biological_sex) '
+            'FROM diet_profiles AS diet WHERE body.user_id = diet.user_id'
+        ))
+        connection.execute(text(
+            "UPDATE body_profiles SET age_band = CASE "
+            "WHEN age_years < 18 THEN 'under_18' WHEN age_years < 30 THEN '18_29' "
+            "WHEN age_years < 45 THEN '30_44' WHEN age_years < 60 THEN '45_59' "
+            "ELSE '60_plus' END WHERE age_years IS NOT NULL"
+        ))
         connection.execute(text('ALTER TABLE training_logs ADD COLUMN IF NOT EXISTS planned_session_title VARCHAR(120)'))
         connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS injuries TEXT'))
         connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS allergies_reviewed BOOLEAN NOT NULL DEFAULT FALSE'))
+        connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS training_end_time VARCHAR(5)'))
+        connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS water_target_ml INTEGER'))
         for column, sql_type in (
             ("portion", "VARCHAR(120)"), ("eaten_at", "VARCHAR(5)"),
             ("calories_kcal", "FLOAT"), ("protein_g", "FLOAT"),

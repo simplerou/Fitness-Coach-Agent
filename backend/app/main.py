@@ -19,6 +19,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .core.security import hash_password, verify_password
 from .services.boohee_food_service import BooheeFoodServiceError, get_food_detail, search_foods
+from .services.diet_agent import (
+    DietAgentConfigurationError,
+    DietAgentGenerationError,
+    generate_diet_advice,
+)
 
 from .database import (
     DEFAULT_TRAINING_WEEKDAYS_BY_COUNT,
@@ -133,14 +138,16 @@ class DailySignal(BaseModel):
 
 
 class BodyProfileRequest(BaseModel):
-    """校验用户自愿提供的身体档案；选填围度不会阻止保存。"""
+    """校验用户自愿提供的基础身体档案。"""
 
-    age_band: Literal["under_18", "18_29", "30_44", "45_59", "60_plus"]
+    age_years: int = Field(ge=13, le=100)
+    biological_sex: Literal["female", "male", "unspecified"] | None = None
     height_cm: float = Field(ge=100, le=230)
     weight_kg: float = Field(ge=25, le=300)
+
+
+class BodyWeightTargetRequest(BaseModel):
     target_weight_kg: float | None = Field(default=None, ge=25, le=300)
-    body_fat_percent: float | None = Field(default=None, ge=3, le=70)
-    waist_cm: float | None = Field(default=None, ge=30, le=200)
 
 
 class BodyWeightRequest(BaseModel):
@@ -205,15 +212,11 @@ class DietMealRequest(BaseModel):
 
 
 class DietProfileRequest(BaseModel):
-    age_years: int | None = Field(default=None, ge=13, le=100)
-    biological_sex: Literal["female", "male", "unspecified"] | None = None
-    muscle_mass_kg: float | None = Field(default=None, ge=10, le=200)
-    measured_bmr: float | None = Field(default=None, ge=500, le=6000)
-    measured_tdee: float | None = Field(default=None, ge=800, le=10000)
     goal: Literal["fat_loss", "muscle_gain", "maintain", "body_shape", "performance"] | None = None
     activity_level: Literal["sedentary", "light", "moderate", "active", "very_active"] | None = None
     training_type: Literal["strength", "cardio", "mixed", "other"] | None = None
     training_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    training_end_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     dietary_preference: str | None = Field(default=None, max_length=48)
     allergies: str | None = Field(default=None, max_length=500)
     allergies_reviewed: bool = False
@@ -224,14 +227,17 @@ class DietProfileRequest(BaseModel):
     cooking_access: Literal["none", "basic", "full"] | None = None
     eating_out_per_week: int | None = Field(default=None, ge=0, le=21)
     budget_note: str | None = Field(default=None, max_length=160)
+    water_target_ml: int | None = Field(default=None, ge=500, le=6000)
 
     @model_validator(mode="after")
     def validate_training_time(self):
-        if self.training_time:
-            try:
-                datetime.strptime(self.training_time, "%H:%M")
-            except ValueError as exc:
-                raise ValueError("训练时间请使用 24 小时制时:分。") from exc
+        if self.training_time and self.training_end_time:
+            start = datetime.strptime(self.training_time, "%H:%M")
+            end = datetime.strptime(self.training_end_time, "%H:%M")
+            if end <= start:
+                raise ValueError("训练结束时间必须晚于开始时间。")
+        elif self.training_end_time and not self.training_time:
+            raise ValueError("请同时填写训练开始时间。")
         for field in ("dietary_preference", "allergies", "avoid_foods", "medical_conditions", "injuries", "budget_note"):
             value = getattr(self, field)
             if value is not None:
@@ -240,6 +246,10 @@ class DietProfileRequest(BaseModel):
                     cleaned = None
                 setattr(self, field, cleaned)
         return self
+
+
+class DietPlanGenerationRequest(BaseModel):
+    privacy_consent: Literal[True]
 
 
 class WaterIntakeRequest(BaseModel):
@@ -512,14 +522,22 @@ def get_body_profile(user_id: int = Depends(authenticated_user_id)) -> dict:
             select(BodyWeightHistoryRecord).where(BodyWeightHistoryRecord.user_id == user_id).order_by(BodyWeightHistoryRecord.recorded_on.desc()).limit(12)
         ).all()
         if profile is None:
-            return {"profile": None, "weight_history": []}
+            legacy = db.get(DietProfileRecord, user_id)
+            return {
+                "profile": None,
+                "weight_history": [],
+                "legacy_demographics": {
+                    "age_years": legacy.age_years if legacy else None,
+                    "biological_sex": legacy.biological_sex if legacy else None,
+                },
+            }
         serialized = {
             "age_band": profile.age_band,
+            "age_years": profile.age_years,
+            "biological_sex": profile.biological_sex,
             "height_cm": profile.height_cm,
             "weight_kg": profile.weight_kg,
             "target_weight_kg": profile.target_weight_kg,
-            "body_fat_percent": profile.body_fat_percent,
-            "waist_cm": profile.waist_cm,
             "updated_at": profile.updated_at.isoformat(),
         }
         weights = [{"date": row.recorded_on.isoformat(), "weight_kg": row.weight_kg} for row in history]
@@ -548,13 +566,29 @@ def save_body_weight(payload: BodyWeightRequest, user_id: int = Depends(authenti
 def save_body_profile(payload: BodyProfileRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
     """保存最新身体档案，并按日期保留体重记录。"""
     with SessionLocal() as db:
+        values = payload.model_dump()
+        age = payload.age_years
+        values["age_band"] = (
+            "under_18" if age < 18 else
+            "18_29" if age < 30 else
+            "30_44" if age < 45 else
+            "45_59" if age < 60 else "60_plus"
+        )
         profile = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
         if profile is None:
-            profile = BodyProfileRecord(user_id=user_id, **payload.model_dump())
+            profile = BodyProfileRecord(user_id=user_id, **values)
             db.add(profile)
         else:
-            for field, value in payload.model_dump().items():
+            for field, value in values.items():
                 setattr(profile, field, value)
+        # These legacy fields are no longer collected or used by the app.
+        profile.body_fat_percent = None
+        profile.waist_cm = None
+        # Clear the old copies after moving them to the single source of truth.
+        legacy_diet_profile = db.get(DietProfileRecord, user_id)
+        if legacy_diet_profile is not None:
+            legacy_diet_profile.age_years = None
+            legacy_diet_profile.biological_sex = None
         today_weight = db.get(BodyWeightHistoryRecord, (user_id, date.today()))
         if today_weight is None:
             db.add(BodyWeightHistoryRecord(user_id=user_id, recorded_on=date.today(), weight_kg=payload.weight_kg))
@@ -564,6 +598,19 @@ def save_body_profile(payload: BodyProfileRequest, user_id: int = Depends(authen
         db.refresh(profile)
         updated_at = profile.updated_at.isoformat()
     return {"ok": True, "updated_at": updated_at, "message": "个人身体档案已保存；体重变化按日期记录。"}
+
+
+@app.put("/api/body-profile/target-weight")
+def save_body_weight_target(payload: BodyWeightTargetRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
+    """单独保存或清除用户自设体重目标。"""
+    with SessionLocal() as db:
+        profile = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
+        if profile is None:
+            raise HTTPException(status_code=409, detail="请先填写身体档案，再设置体重目标。")
+        profile.target_weight_kg = payload.target_weight_kg
+        db.commit()
+    message = "体重目标已清除。" if payload.target_weight_kg is None else "体重目标已保存。"
+    return {"ok": True, "target_weight_kg": payload.target_weight_kg, "message": message}
 
 
 @app.delete("/api/body-profile")
@@ -874,44 +921,31 @@ def calculate_diet_targets(body, profile) -> dict:
     """按身体档案与饮食档案计算每日营养目标起点；不读取或写入历史计划。"""
     if body is None:
         return {"status": "needs_data", "missing": ["个人身体档案：身高和当前体重"], "message": "先填写身体档案，才能估算个性化营养目标。"}
-    if body.age_band == "under_18":
+    if body.age_band == "under_18" or (body.age_years is not None and body.age_years < 18):
         return {"status": "professional_support", "message": "青少年仍处于生长发育阶段，本工具不生成成人热量或宏量营养素目标；建议和监护人一起咨询医生或注册营养师。"}
     if profile is None:
         return {"status": "needs_data", "missing": ["饮食规划档案"], "message": "请补充饮食规划档案后生成个性化目标。"}
 
     missing = []
-    if profile.age_years is None: missing.append("具体年龄")
-    if profile.biological_sex not in ("female", "male"): missing.append("用于代谢公式的生理性别")
+    if body.age_years is None: missing.append("身体档案中的准确年龄")
+    if body.biological_sex not in ("female", "male"): missing.append("身体档案中的代谢估算性别")
     if not profile.goal: missing.append("健身目标")
     if not profile.activity_level: missing.append("日常活动水平")
     if not profile.health_reviewed: missing.append("健康约束确认")
     if not profile.allergies_reviewed: missing.append("过敏源与忌口确认")
     if missing:
         return {"status": "needs_data", "missing": missing, "message": "补充这些信息后，系统才能计算参考目标。"}
-    if profile.age_years < 18:
-        return {"status": "professional_support", "message": "未满 18 岁不生成成人热量或宏量营养素目标；建议和监护人一起咨询医生或注册营养师。"}
-
-    age_ranges = {"18_29": (18, 29), "30_44": (30, 44), "45_59": (45, 59), "60_plus": (60, 100)}
-    age_range = age_ranges.get(body.age_band)
-    if age_range and not age_range[0] <= profile.age_years <= age_range[1]:
-        return {"status": "data_conflict", "message": "身体档案年龄段与饮食档案中的具体年龄不一致，请先修正后再计算。"}
     if (profile.medical_conditions or "").strip() or (profile.injuries or "").strip():
         return {"status": "professional_support", "message": "档案中记录了疾病、孕期、进食障碍、伤病或其他健康情况。请咨询医生或注册营养师后再设定营养目标。"}
 
     height_m = body.height_cm / 100
     bmi = body.weight_kg / (height_m * height_m)
-    if profile.measured_bmr is not None:
-        bmr, bmr_source = profile.measured_bmr, "用户提供的测量值"
-    else:
-        sex_adjustment = 5 if profile.biological_sex == "male" else -161
-        bmr = 10 * body.weight_kg + 6.25 * body.height_cm - 5 * profile.age_years + sex_adjustment
-        bmr_source = "Mifflin–St Jeor 公式估算"
-    if profile.measured_tdee is not None:
-        tdee, tdee_source = profile.measured_tdee, "用户提供的测量值"
-    else:
-        factor = DIET_ACTIVITY_FACTORS[profile.activity_level]
-        tdee = bmr * factor
-        tdee_source = f"BMR × 活动系数 {factor}（{DIET_ACTIVITY_LABELS[profile.activity_level]}）"
+    sex_adjustment = 5 if body.biological_sex == "male" else -161
+    bmr = 10 * body.weight_kg + 6.25 * body.height_cm - 5 * body.age_years + sex_adjustment
+    bmr_source = "Mifflin–St Jeor 公式估算"
+    factor = DIET_ACTIVITY_FACTORS[profile.activity_level]
+    tdee = bmr * factor
+    tdee_source = f"估算 BMR × 活动系数 {factor}（{DIET_ACTIVITY_LABELS[profile.activity_level]}）"
     if tdee < bmr:
         return {"status": "data_conflict", "message": "TDEE 低于 BMR，请核对测量值与活动水平。"}
     if profile.goal == "fat_loss" and bmi < 18.5:
@@ -936,7 +970,7 @@ def calculate_diet_targets(body, profile) -> dict:
     return {
         "status": "ready",
         "summary": {
-            "age_years": profile.age_years, "height_cm": body.height_cm, "weight_kg": body.weight_kg,
+            "height_cm": body.height_cm, "weight_kg": body.weight_kg,
             "bmi": round(bmi, 1), "bmr_kcal": round(bmr), "bmr_source": bmr_source,
             "tdee_kcal": round(tdee), "tdee_source": tdee_source,
             "goal": DIET_GOAL_LABELS[profile.goal], "activity_level": DIET_ACTIVITY_LABELS[profile.activity_level],
@@ -984,10 +1018,9 @@ def get_diet_profile(user_id: int = Depends(authenticated_user_id)) -> dict:
     if profile is None:
         return {"profile": None}
     fields = (
-        "age_years", "biological_sex", "muscle_mass_kg", "measured_bmr", "measured_tdee",
-        "goal", "activity_level", "training_type", "training_time", "dietary_preference",
+        "goal", "activity_level", "training_type", "training_time", "training_end_time", "dietary_preference",
         "allergies", "allergies_reviewed", "avoid_foods", "medical_conditions", "injuries", "health_reviewed",
-        "cooking_access", "eating_out_per_week", "budget_note",
+        "cooking_access", "eating_out_per_week", "budget_note", "water_target_ml",
     )
     return {"profile": {field: getattr(profile, field) for field in fields}}
 
@@ -1000,6 +1033,18 @@ def get_diet_targets(user_id: int = Depends(authenticated_user_id)) -> dict:
         profile = db.get(DietProfileRecord, user_id)
     result = calculate_diet_targets(body, profile)
     result.pop("calculation", None)
+    target_ml = profile.water_target_ml if profile else None
+    has_health_constraints = bool(profile and ((profile.medical_conditions or "").strip() or (profile.injuries or "").strip()))
+    suggested_ml = None
+    if body and body.age_years is not None and body.age_years >= 18 and not has_health_constraints:
+        suggested_ml = int(body.weight_kg * 0.3 + 0.5) * 100
+    result["hydration"] = {
+        "target_ml": target_ml,
+        "suggested_ml": suggested_ml,
+        "source": "user_set" if target_ml is not None else "not_set",
+        "basis": "粗略起点：当前体重 × 30 毫升/公斤，按 100 毫升取整；训练安排仅用于提醒饮水时机，不自动增加固定水量。" if suggested_ml is not None else None,
+        "note": "这是你设置的日常饮水参考值，不是医疗建议；训练、天气和健康情况可能影响个人需要。" if target_ml is not None else "尚未设置饮水参考值；可以只记录实际饮水，不作目标比较。",
+    }
     return result
 
 
@@ -1151,8 +1196,12 @@ def update_diet_meal(meal_id: int, payload: DietMealRequest, user_id: int = Depe
         result = diet_meal_response(meal)
     return {"ok": True, "meal": result, "message": "餐食内容已更新。" }
 
-@app.get("/api/diet/plan")
-def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dict:
+@app.post("/api/diet/plan")
+def get_personal_diet_plan(
+    payload: DietPlanGenerationRequest,
+    user_id: int = Depends(authenticated_user_id),
+) -> dict:
+    del payload  # 明确要求前端确认 AI 数据发送说明后才允许触发模型调用。
     with SessionLocal() as db:
         body = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
         profile = db.get(DietProfileRecord, user_id)
@@ -1189,6 +1238,9 @@ def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dic
             BodyWeightHistoryRecord.recorded_on >= history_start,
             BodyWeightHistoryRecord.recorded_on <= today,
         ).order_by(BodyWeightHistoryRecord.recorded_on)).all()
+        previous_snapshot = db.scalar(select(DietPlanSnapshotRecord).where(
+            DietPlanSnapshotRecord.user_id == user_id,
+        ).order_by(DietPlanSnapshotRecord.created_at.desc(), DietPlanSnapshotRecord.id.desc()).limit(1))
 
     target_result = calculate_diet_targets(body, profile)
     if target_result["status"] != "ready":
@@ -1298,10 +1350,14 @@ def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dic
     if hydration_summary["days_logged"]:
         diagnosis.append(
             f"近 7 天记录饮水 {hydration_summary['days_logged']} 天，累计 {hydration_summary['total_ml']} 毫升；有记录日均约 "
-            f"{hydration_summary['average_on_logged_days_ml']} 毫升。未记录日期不按 0 计算，本工具不设统一饮水目标。"
+            f"{hydration_summary['average_on_logged_days_ml']} 毫升。未记录日期不按 0 计算。"
         )
     else:
-        diagnosis.append("近 7 天没有饮水量记录，暂时无法回顾饮水情况；可按需记录实际饮水量，本工具不设统一饮水目标。")
+        diagnosis.append("近 7 天没有饮水量记录，暂时无法回顾饮水情况；可按需记录实际饮水量。")
+    if profile.water_target_ml is not None:
+        diagnosis.append(f"你设置的日常饮水参考值为 {profile.water_target_ml} 毫升；饮水记录仅用于个人回顾，记录不足时不据此判断是否缺水。")
+    else:
+        diagnosis.append("尚未设置个人饮水参考值；饮水数据只作记录回顾，不推断是否达标或缺水。")
     if len(complete_dates) < 3:
         diagnosis.append("最近 7 天标记为完整的饮食记录少于 3 天，暂不根据记录计算日均差距；继续记录后再看趋势。")
     else:
@@ -1335,54 +1391,124 @@ def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dic
         "carbs_g": round(macro_targets["carbs_g"] * share),
         "fat_g": round(macro_targets["fat_g"] * share),
     } for name, share in shares]
-    food_examples = [
-        {"meal": "早餐", "example": "主食（燕麦或全麦面包）+ 蛋白质来源（鸡蛋、豆制品或乳品中选择适合你的）+ 水果"},
-        {"meal": "午餐", "example": "米饭或杂粮饭 + 鱼、禽肉、豆腐等蛋白质来源 + 蔬菜"},
-        {"meal": "晚餐", "example": "土豆、米饭等主食 + 鱼、蛋、豆制品或瘦肉 + 蔬菜"},
-        {"meal": "加餐", "example": "按偏好选择水果、无糖乳品或豆制品；不饿时可不安排"},
-    ]
-    if profile.allergies or profile.avoid_foods:
-        food_examples = [
-            {"meal": "早餐", "example": "从你确认安全的食物中组合主食、蛋白质来源和水果/蔬菜；逐项核对包装与交叉污染提示。"},
-            {"meal": "午餐", "example": "从你确认安全的主食、蛋白质来源和蔬菜中组合，并按本餐目标调整分量。"},
-            {"meal": "晚餐", "example": "选择符合偏好的安全食材，包含主食、蛋白质来源和蔬菜；不确定时先核对标签。"},
-            {"meal": "加餐", "example": "仅在需要时，从已确认安全的食物中选择。"},
-        ]
-    elif profile.cooking_access == "none":
-        food_examples = [
-            {"meal": "早餐", "example": "外食时按目标组合主食、蛋白质来源和水果；优先查看包装或菜单营养信息。"},
-            {"meal": "午餐", "example": "选择含主食、蛋白质来源和蔬菜的套餐；酱汁可分开放，份量按本餐目标调整。"},
-            {"meal": "晚餐", "example": "外食按主食、蛋白质来源和蔬菜搭配；根据预算选可持续的常见餐食。"},
-            {"meal": "加餐", "example": "按偏好选择方便携带且确认适合自己的食品；不饿时可不安排。"},
-        ]
-    elif profile.dietary_preference and any(term in profile.dietary_preference.lower() for term in ("素食", "纯素", "vegan", "vegetarian")):
-        food_examples = [
-            {"meal": "早餐", "example": "燕麦或全麦面包 + 豆浆/豆腐等植物蛋白 + 水果"},
-            {"meal": "午餐", "example": "米饭或杂粮饭 + 豆腐、豆类等植物蛋白 + 蔬菜"},
-            {"meal": "晚餐", "example": "土豆、米饭等主食 + 豆类或豆制品 + 蔬菜"},
-            {"meal": "加餐", "example": "按偏好选择水果、豆制品或坚果；不饿时可不安排"},
-        ]
     training_info = {
         "frequency_days_per_week": training.days_per_week if training else None,
         "training_days": schedule.weekdays if schedule else None,
         "training_type": profile.training_type,
         "training_time": profile.training_time,
+        "training_end_time": profile.training_end_time,
         "session_minutes": training.session_minutes if training else None,
     }
+    weekday_labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    planning_days = []
+    for day_index in range(7):
+        plan_date = today + timedelta(days=day_index)
+        scheduled_weekdays = schedule.weekdays if schedule else None
+        day_type = "训练日" if scheduled_weekdays is not None and plan_date.isoweekday() in scheduled_weekdays else (
+            "休息日" if scheduled_weekdays is not None else "未设置训练安排"
+        )
+        planning_days.append({
+            "day_index": day_index,
+            "date": plan_date.isoformat(),
+            "weekday": weekday_labels[plan_date.weekday()],
+            "day_type": day_type,
+        })
     if profile.training_time:
         if training_timing_review["days_last_meal_over_4h_before_training"]:
             diagnosis.append(f"在 {training_timing_review['days_with_meal_time_data']} 个同时有完整饮食和进食时间记录的训练日中，有 {training_timing_review['days_last_meal_over_4h_before_training']} 天记录到训练前超过 4 小时没有进食；这只是记录提示，可结合训练感受调整餐次。")
         else:
-            diagnosis.append(f"训练时段档案为 {profile.training_time}；记录到 {training_timing_review['days_with_meal_time_data']} 个训练日有进食时间数据。可在训练前约 1–3 小时安排正常一餐，训练后约 1–2 小时按下一餐正常进食；无需强行加餐，并结合个人感受调整。")
+            training_period = f"{profile.training_time}–{profile.training_end_time}" if profile.training_end_time else f"开始于 {profile.training_time}（结束时间未填写）"
+            diagnosis.append(f"训练时段档案为 {training_period}；记录到 {training_timing_review['days_with_meal_time_data']} 个训练日有进食时间数据。可在训练前约 1–3 小时安排正常一餐，训练后约 1–2 小时按下一餐正常进食；无需强行加餐，并结合个人感受调整。")
+
+    meal_type_labels = {"breakfast": "早餐", "lunch": "午餐", "dinner": "晚餐", "snack": "加餐"}
+    previous_plan_data = previous_snapshot.plan_data if previous_snapshot else None
+    previous_plan_context = None
+    if previous_plan_data:
+        previous_plan_context = {
+            "generated_on": previous_snapshot.generated_on.isoformat(),
+            "change_summary": previous_plan_data.get("ai_advice", {}).get("change_summary"),
+            "weekly_plan": [
+                {"weekday": day.get("weekday"), "meals": [
+                    {"name": meal.get("name"), "example": meal.get("example")}
+                    for meal in day.get("meals", [])
+                ]}
+                for day in previous_plan_data.get("weekly_plan", [])
+            ],
+        }
+    agent_input = {
+        "profile": {
+            "age_years": body.age_years,
+            "biological_sex": body.biological_sex,
+            "height_cm": body.height_cm,
+            "weight_kg": body.weight_kg,
+            "bmi_adult_reference": bmi,
+            "goal": DIET_GOAL_LABELS[goal],
+            "activity_level": DIET_ACTIVITY_LABELS[profile.activity_level],
+            "dietary_preference": profile.dietary_preference,
+            "allergies": profile.allergies,
+            "avoid_foods": profile.avoid_foods,
+            "cooking_access": profile.cooking_access,
+            "eating_out_per_week": profile.eating_out_per_week,
+            "budget_note": profile.budget_note,
+            "water_target_ml": profile.water_target_ml,
+            "training": training_info,
+        },
+        "target": target,
+        "planning_days": planning_days,
+        "previous_plan": previous_plan_context,
+        "record_summary": {
+            "coverage": coverage,
+            "complete_day_averages": averages,
+            "meal_distribution": meal_distribution,
+            "hydration": hydration_summary,
+            "training_day_comparison": training_day_comparison,
+            "training_timing_review": training_timing_review,
+        },
+        "verified_observations": diagnosis,
+        "meal_macro_targets_calculated_by_backend": meal_plan,
+        "recent_meals": [
+            {
+                "date": meal.log_date.isoformat(),
+                "meal": meal_type_labels.get(meal.meal_type, meal.meal_type),
+                "foods": meal.description,
+                "portion": meal.portion,
+                "eaten_at": meal.eaten_at,
+                "calories_kcal": meal.calories_kcal,
+                "protein_g": meal.protein_g,
+                "carbs_g": meal.carbs_g,
+                "fat_g": meal.fat_g,
+                "nutrition_source": meal.nutrition_source,
+            }
+            for meal in sorted(meals, key=lambda item: (item.log_date, item.eaten_at or "", item.id or 0))[-28:]
+        ],
+    }
+    try:
+        ai_advice = generate_diet_advice(agent_input)
+    except DietAgentConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except DietAgentGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    weekly_plan = []
+    for planned_day in planning_days:
+        day_meals = []
+        for meal_target in meal_plan:
+            example = next(
+                (item["example"] for item in ai_advice["food_examples"]
+                 if item["day_index"] == planned_day["day_index"] and item["meal"] == meal_target["name"]),
+                "",
+            )
+            day_meals.append({**meal_target, "example": example})
+        weekly_plan.append({**planned_day, "meals": day_meals})
+
     result = {
         "status": "ready",
         "summary": {
-            "age_years": profile.age_years, "height_cm": body.height_cm, "weight_kg": body.weight_kg,
+            "height_cm": body.height_cm, "weight_kg": body.weight_kg,
             "target_weight_kg": body.target_weight_kg,
             "weight_trend_14d": [{"date": row.recorded_on.isoformat(), "weight_kg": row.weight_kg} for row in weight_records],
             "weight_change_14d": round(weight_records[-1].weight_kg - weight_records[0].weight_kg, 1) if len(weight_records) >= 2 else None,
-            "bmi": round(bmi, 1), "body_fat_percent": body.body_fat_percent,
-            "muscle_mass_kg": profile.muscle_mass_kg,
+            "bmi": round(bmi, 1),
             "bmr_kcal": round(bmr), "bmr_source": bmr_source,
             "tdee_kcal": round(tdee), "tdee_source": tdee_source,
             "goal": DIET_GOAL_LABELS[goal], "activity_level": DIET_ACTIVITY_LABELS[profile.activity_level],
@@ -1390,16 +1516,19 @@ def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dic
         },
         "record_summary": {
             "coverage": coverage, "averages": averages,
-            "hydration": hydration_summary,
+            "hydration": {**hydration_summary, "target_ml": profile.water_target_ml},
             "training_day_comparison": training_day_comparison,
             "meal_distribution": meal_distribution,
             "training_timing_review": training_timing_review,
         },
         "diagnosis": diagnosis,
+        "ai_advice": ai_advice,
+        "change_summary": ai_advice["change_summary"],
         "warnings": warnings,
         "target": target,
         "meal_plan": meal_plan,
-        "food_examples": food_examples,
+        "weekly_plan": weekly_plan,
+        "food_examples": ai_advice["food_examples"],
         "execution_context": {
             "cooking_access": profile.cooking_access or "未填写",
             "eating_out_per_week": profile.eating_out_per_week,
@@ -1407,28 +1536,19 @@ def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dic
             "dietary_preference": profile.dietary_preference,
         },
         "recorded_habits": {
-            "keep": (
-                "近 7 天重复记录：" + "、".join(f"{item['description']}（{item['count']} 次）" for item in common_meals)
-                + "。重复仅表示你常选择这些餐食，不代表营养质量；可保留其中你确认适合且可持续的部分。"
-                if common_meals else
-                "最近 7 天还没有重复餐食记录，暂时不能识别稳定饮食习惯；继续记录后再比较。"
-            ),
-            "adjust": (
-                f"完整记录显示蛋白质日均约 {averages['protein']} 克，低于当前估算目标约 {round(macro_targets['protein_g'] - averages['protein'])} 克；可把已确认安全的蛋白质来源分配到多餐，并用标签/称量记录复核。"
-                if averages["protein"] is not None and averages["protein"] < macro_targets["protein_g"] else
-                "优先调整完整记录中与目标差距最大的项目；营养数据不完整时先补记，不推断缺失摄入。"
-            ),
+            "keep": ai_advice["habit_to_keep"],
+            "adjust": ai_advice["priority_adjustment"],
         },
         "tracking": {
-            "period": "连续记录并每 1–2 周回顾一次；可同时观察体重趋势、体脂率（如有）和训练感受。",
-            "next_data": ["如有可靠来源，补充体脂率/肌肉量或设备测得的 BMR/TDEE", "尽量记录分量和包装标签营养数据", "每天确认是否已记录完整", "如希望回顾饮水情况，可记录实际饮水量；系统不设统一饮水目标"],
+            "period": ai_advice["tracking_period"],
+            "next_data": ai_advice["next_data"],
         },
         "assumptions": [
             "BMI 为成人筛查参考数值，不用于诊断。",
             "BMR/TDEE 是估算或用户提供的测量值，会受个体差异影响；请把目标作为起点而非精确处方。",
             "未提供实测 BMR 时使用 Mifflin–St Jeor：男性 10×体重kg + 6.25×身高cm − 5×年龄 + 5；女性末项为 −161。未提供实测 TDEE 时用 BMR 乘所选活动系数。",
             "每餐目标按早餐 25%、午餐 35%、晚餐 30%、加餐 10% 分配；可按作息调整，总量近似。",
-            "当前没有内置食物营养数据库，食物示例不含精确营养值；实际分量以食品标签和称量记录为准，并核对过敏原。",
+            "周计划中的食物例子不绑定精确营养值；精确营养需通过食物库选择食物并记录分量后计算，且需核对过敏原。",
             "当前未采集微量营养素数据，不判断维生素或矿物质缺口；如有担忧请补充专业评估。",
         ],
     }

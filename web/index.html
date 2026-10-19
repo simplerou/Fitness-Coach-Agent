@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#102820" />
   <title>青禾训练助理 · V1.9</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.9.49" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.9.68" />
 </head>
 <body class="auth-open">
   <div class="shell">
@@ -108,7 +108,7 @@
               <label class="field"><span>单次训练时长</span><select name="session_minutes"><option value="20">约 20 分钟</option><option value="30" selected>约 30 分钟</option><option value="45">约 45 分钟</option><option value="60">约 60 分钟</option></select></label>
               <button class="button button-primary" type="submit">生成本周计划 <span>↗</span></button>
             </form>
-            <p class="fine-print">生成计划前需填写个人身体档案。年龄段会影响恢复提示；身高体重用于后续进展对照。</p>
+            <p class="fine-print">生成计划前需填写个人身体档案。年龄会影响恢复提示；身高体重用于后续进展对照。</p>
           </article>
           <article class="panel result-panel"><div class="panel-head"><div><p class="eyebrow">PLAN PREVIEW</p><h3>计划预览</h3></div></div><div id="plan-result" class="empty-state"><div class="empty-icon">✳</div><p>你的周计划会显示在这里。</p></div></article>
         </div>
@@ -136,7 +136,7 @@
             <div class="panel-head"><div><p class="eyebrow">BODY PROFILE</p><h3>个人身体档案</h3></div><span class="step-no">01</span></div>
             <div id="body-profile-summary" class="empty-state"><p>正在读取身体档案…</p></div>
             <div class="profile-actions"><button class="button button-primary" id="edit-body-profile" type="button">填写身体档案</button></div>
-            <p class="fine-print">档案用于计划生成时的基础参考。年龄段会影响恢复提示；身高、体重及选填数据作为进展对照基线，不会单独用于判断体能或自动增加训练量。</p>
+            <p class="fine-print">档案用于计划生成时的基础参考。年龄会影响恢复提示和代谢估算；身高、体重及选填数据作为进展对照基线，不会单独用于判断体能或自动增加训练量。</p>
           </article>
           <article class="panel">
             <div class="panel-head"><div><p class="eyebrow">WEIGHT HISTORY</p><h3>体重变化</h3></div><span class="step-no">02</span></div>
@@ -170,79 +170,24 @@
       <section class="page" id="page-diet">
         <div class="section-heading"><div><p class="eyebrow">FOOD & WATER</p><h2>吃得有记录</h2></div><span class="tag">按天回顾</span></div>
         <article class="panel diet-intro">
-          <p>记录实际饮食，并结合身体档案、训练情况与完整饮食记录生成可追踪的规划参考。数据不足或存在特殊健康情况时，系统会说明原因，不会猜测缺失数据。</p>
+          <p>先完善身体和饮食档案并生成初始计划，再按日记录实际餐食与饮水；系统会对照计划和实际摄入，帮助你逐步调整。数据不足或存在特殊健康情况时，会说明原因，不会猜测缺失数据。</p>
           <label class="field"><span>查看日期</span><input type="date" id="diet-date" required /></label>
         </article>
-        <div class="diet-dashboard">
-          <article class="panel diet-today-summary">
-            <div class="diet-card-heading"><span class="diet-heading-icon">◉</span><h3>当日饮食摄入</h3><span class="diet-date-note">根据已记录内容</span></div>
-            <div class="diet-energy-layout">
-              <div class="diet-calorie-gauge" id="diet-calorie-gauge" style="--diet-progress:0%"><svg viewBox="0 0 200 112" aria-hidden="true"><path class="diet-gauge-track" d="M 14 100 A 86 86 0 0 1 186 100" pathLength="100"/><path class="diet-gauge-value" id="diet-calorie-arc" d="M 14 100 A 86 86 0 0 1 186 100" pathLength="100"/></svg><div><span>已记录摄入</span><strong id="diet-calories-total">—</strong><small>千卡</small></div></div>
-            </div>
-            <div class="diet-intake-status"><span>碳水 <b id="diet-carbs-status">未记录</b></span><i></i><span>蛋白质 <b id="diet-protein-status">未记录</b></span><i></i><span>脂肪 <b id="diet-fat-status">未记录</b></span></div>
-          </article>
-          <article class="panel diet-insight-card">
-            <p class="eyebrow">DAILY INSIGHT</p>
-            <div class="diet-insight-content">
-              <div class="diet-insight-meal">
-                <h3 id="diet-insight-title">记录今天的饮食，回顾营养结构</h3>
-                <p id="diet-insight-copy">摄入统计依据你录入的餐食与营养数据；未填写的项目不会按零推断。</p>
-                <button class="button button-primary" id="diet-insight-action" type="button">记录第一餐</button>
-              </div>
-              <div class="diet-water-quick">
-                <div class="diet-water-quick-total"><span>饮水累计</span><strong id="diet-water-total">0 <small>毫升</small></strong></div>
-                <form id="diet-water-form" class="diet-water-quick-form">
-                  <label class="field"><span>本次饮水（毫升）</span><input type="number" name="amount_ml" min="50" max="3000" step="50" required placeholder="例如 250" /></label>
-                  <button class="button button-primary" type="submit">记录饮水</button>
-                </form>
-                <p>仅统计你主动记录的饮水量。</p>
-              </div>
-            </div>
-          </article>
-          <article class="panel diet-nutrition-card">
-            <div class="diet-card-heading"><span class="diet-heading-icon">◒</span><h3>营养成分</h3><span class="diet-date-note">已填写营养值</span></div>
-            <div class="diet-target-notice hidden" id="diet-target-notice" role="status" aria-live="polite">
-              <span id="diet-target-message"></span>
-              <button class="text-button" id="edit-diet-targets" type="button">去补充档案</button>
-            </div>
-            <p class="diet-target-basis hidden" id="diet-target-basis"></p>
-            <div class="diet-macro-layout">
-              <div class="diet-macro-list">
-                <div class="diet-macro-row"><div><span>碳水</span><strong><b id="diet-carbs-total">0</b><small id="diet-carbs-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-carbs-bar"></i></div></div>
-                <div class="diet-macro-row"><div><span>蛋白质</span><strong><b id="diet-protein-total">0</b><small id="diet-protein-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-protein-bar"></i></div></div>
-                <div class="diet-macro-row"><div><span>脂肪</span><strong><b id="diet-fat-total">0</b><small id="diet-fat-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-fat-bar"></i></div></div>
-              </div>
-              <div class="diet-macro-chart" id="diet-macro-chart" aria-label="已记录三大营养素构成"><span id="diet-macro-coverage">等待记录</span></div>
-            </div>
-            <p class="diet-data-note" id="diet-nutrition-note">没有记录的餐食或营养值不代表摄入为零。</p>
-          </article>
-        </div>
-        <article class="panel diet-meals-panel">
-          <div class="panel-head"><div><p class="eyebrow">TODAY'S MEALS</p><h3>当天餐食</h3></div><button class="text-button" id="refresh-diet" type="button">刷新</button></div>
-          <label class="diet-complete-row"><input type="checkbox" id="diet-day-complete" /><span>我已记录完这一天吃过的餐食（用于判断数据是否完整）</span></label>
-          <div id="diet-meal-list" class="empty-state" aria-live="polite"><p>选择日期后查看餐食记录。</p></div>
-        </article>
 
-<details class="panel diet-planning-fold"><summary><span><b>个性化饮食规划</b><small>管理身体/饮食档案、生成分析并查看历史</small></span><span class="tag">展开设置</span></summary><div class="diet-planning-content">
+<details class="panel diet-planning-fold" open><summary><span><b>第一步：AI 饮食规划</b><small>先完善档案并生成初始计划；记录一段时间后，可结合实际摄入继续调整</small></span><span class="tag">先设置计划</span></summary><div class="diet-planning-content">
           <details class="panel diet-profile-panel" id="diet-profile-panel">
           <summary><span><b>饮食规划档案</b><small>补充目标、活动水平、健康约束和饮食偏好</small></span><span class="tag">规划前填写</span></summary>
           <form id="diet-profile-form" class="form-stack diet-profile-form">
-            <div class="field-row">
-              <label class="field"><span>年龄（岁）</span><input type="number" name="age_years" min="13" max="100" placeholder="具体年龄；未满 18 岁不生成成人目标" /></label>
-              <label class="field"><span>代谢估算所用的生理性别</span><select name="biological_sex"><option value="">请选择</option><option value="female">女性</option><option value="male">男性</option><option value="unspecified">不便提供</option></select></label>
-            </div>
             <div class="field-row">
               <label class="field"><span>健身目标</span><select name="goal"><option value="">请选择</option><option value="fat_loss">减脂</option><option value="muscle_gain">增肌</option><option value="maintain">维持</option><option value="body_shape">塑形</option><option value="performance">提升运动表现</option></select></label>
               <label class="field"><span>总体活动水平（包含训练）</span><select name="activity_level"><option value="">请选择</option><option value="sedentary">久坐为主</option><option value="light">轻度活动</option><option value="moderate">中等活动</option><option value="active">活动较多</option><option value="very_active">高活动量</option></select></label>
             </div>
             <div class="field-row">
               <label class="field"><span>训练类型</span><select name="training_type"><option value="">请选择</option><option value="strength">力量</option><option value="cardio">有氧</option><option value="mixed">混合</option><option value="other">其他</option></select></label>
-              <label class="field"><span>通常训练时间（选填）</span><input type="time" name="training_time" /></label>
+              <label class="field"><span>通常训练时段（24小时制，选填）</span><span class="training-time-control"><input type="hidden" name="training_time" /><input type="hidden" name="training_end_time" /><button class="training-time-trigger" id="open-training-time-picker" type="button" aria-haspopup="dialog" aria-controls="training-time-dialog" aria-expanded="false">选择开始和结束时间</button></span></label>
             </div>
-            <div class="field-row">
-              <label class="field"><span>肌肉量（选填，公斤）</span><input type="number" name="muscle_mass_kg" min="10" max="200" step="0.1" placeholder="有可靠测量再填写" /></label>
-              <label class="field"><span>BMR / TDEE（选填，千卡）</span><span class="diet-inline-inputs"><input type="number" name="measured_bmr" min="500" max="6000" placeholder="实测 BMR" /><input type="number" name="measured_tdee" min="800" max="10000" placeholder="实测 TDEE" /></span></label>
-            </div>
+            <div class="field"><label for="diet-water-target-input">每日饮水参考目标（毫升，选填）</label><input id="diet-water-target-input" type="number" name="water_target_ml" min="500" max="6000" step="100" placeholder="不确定可留空，只记录实际饮水" /><small class="field-hint" id="diet-water-target-hint">这是你自行设定的参考值，不是医疗建议；有特殊健康情况时请遵循医生建议。</small><button class="text-button hidden" id="use-water-target-suggestion" type="button">使用粗略参考值</button></div>
+            <p class="fine-print">年龄和性别从“我的”身体档案读取。BMR、TDEE 由系统估算；肌肉量不作为普通用户的必填数据。</p>
             <div class="field-row">
               <label class="field"><span>饮食偏好（如素食）</span><input name="dietary_preference" maxlength="48" placeholder="选填" /></label>
               <label class="field"><span>过敏源</span><input name="allergies" maxlength="500" placeholder="如无过敏请留空并勾选下方确认" /></label>
@@ -261,14 +206,15 @@
               <label class="field"><span>伤病或持续疼痛（选填）</span><textarea name="injuries" rows="2" maxlength="500" placeholder="无则留空；有情况时先咨询专业人士"></textarea></label>
             </div>
             <label class="confirm-row"><input type="checkbox" name="health_reviewed" /><span>我已确认并填写上面的健康约束；如有特殊健康情况，愿意先咨询医生或注册营养师。</span></label>
-            <div class="diet-profile-actions"><button class="button button-primary" type="submit">保存规划档案</button><button class="button button-quiet" id="generate-diet-plan" type="button">生成饮食分析与规划</button></div>
-            <p class="fine-print">年龄与生理性别仅用于成人代谢公式估算。疾病、孕期、进食障碍等情况下不生成热量或营养素处方。</p>
+            <label class="confirm-row diet-agent-consent"><input type="checkbox" id="diet-agent-consent" /><span>我同意生成 / 更新计划时，将身体指标、饮食偏好与忌口、训练安排、饮水参考值、近 7 天记录及上一版计划摘要发送给阿里云百炼（通义千问）。不会发送账号名；不勾选仍可继续使用记录功能。</span></label>
+            <div class="diet-profile-actions"><button class="button button-primary" type="submit">保存规划档案</button><button class="button button-quiet" id="generate-diet-plan" type="button">生成 / 更新本周计划</button></div>
+            <p class="fine-print">档案中的年龄与生理性别仅用于成人代谢公式估算。疾病、孕期、进食障碍等情况下不生成热量或营养素处方。</p>
           </form>
         </details>
         <article class="panel diet-plan-panel">
-          <div class="panel-head"><div><p class="eyebrow">PERSONALIZED REVIEW</p><h3>饮食分析与规划</h3></div><span class="tag">基于已记录数据</span></div>
-          <p class="fine-print diet-refresh-note">规划会读取当前身体档案、饮食档案及近 7 天完整餐食记录，并参考近 14 天体重记录。更新档案或餐食后，请重新生成分析以刷新结论；每次生成会保存一份历史快照。</p>
-          <div id="diet-plan-result" class="empty-state" aria-live="polite"><p>填写身体档案和饮食规划档案，记录几天餐食后，即可生成分析。</p></div>
+          <div class="panel-head"><div><p class="eyebrow">AI DIET PLANNING</p><h3>一周饮食计划</h3></div><button class="button button-primary" id="generate-diet-plan-from-result" type="button">更新本周计划</button></div>
+          <p class="fine-print diet-refresh-note">初次根据身体档案和饮食偏好生成；之后可结合近 7 天餐食、饮水、训练和体重记录更新计划。营养目标由后端公式计算，AI 负责安排不同餐次的食物示例；记录食物后，系统按食物库和分量计算实际营养。每次更新都会保存历史快照。</p>
+          <div id="diet-plan-result" class="empty-state" aria-live="polite"><p>先完善身体档案与饮食规划档案，即可生成初始计划；之后记录每日餐食，在下方查看实际摄入与目标的差距。</p><button class="button button-primary" id="open-diet-profile-from-plan" type="button">完善档案并设置计划</button></div>
         </article>
         <article class="panel diet-history-panel">
           <div class="panel-head"><div><p class="eyebrow">SAVED REVIEWS</p><h3>近期规划记录</h3></div><button class="text-button" id="refresh-diet-plan-history" type="button">刷新</button></div>
@@ -276,7 +222,66 @@
         </article>
         </div></details></section>
 
+        <div class="diet-flow-heading"><p class="eyebrow">STEP 02 · DAILY INTAKE</p><h3>记录每日摄入</h3><p>按所选日期记录实际餐食与饮水；没有记录的数据不会按零计算。</p></div>
+        <div class="diet-dashboard">
+          <article class="panel diet-today-summary">
+            <div class="diet-card-heading"><span class="diet-heading-icon">◉</span><h3>当日饮食摄入</h3><span class="diet-date-note">根据已记录内容</span></div>
+            <div class="diet-energy-layout">
+              <div class="diet-calorie-gauge" id="diet-calorie-gauge" style="--diet-progress:0%"><svg viewBox="0 0 200 112" aria-hidden="true"><path class="diet-gauge-track" d="M 14 100 A 86 86 0 0 1 186 100" pathLength="100"/><path class="diet-gauge-value" id="diet-calorie-arc" d="M 14 100 A 86 86 0 0 1 186 100" pathLength="100"/></svg><div><span>已记录摄入</span><strong id="diet-calories-total">—</strong><small>千卡</small></div></div>
+            </div>
+            <div class="diet-intake-status"><span>碳水 <b id="diet-carbs-status">未记录</b></span><i></i><span>蛋白质 <b id="diet-protein-status">未记录</b></span><i></i><span>脂肪 <b id="diet-fat-status">未记录</b></span></div>
+          </article>
+          <article class="panel diet-insight-card">
+            <p class="eyebrow">DAILY INSIGHT</p>
+            <div class="diet-insight-content">
+              <div class="diet-insight-meal">
+                <h3 id="diet-insight-title">记录今天的饮食，回顾营养结构</h3>
+                <p id="diet-insight-copy">摄入统计依据你录入的餐食与营养数据；未填写的项目不会按零推断。</p>
+                <button class="button button-primary" id="diet-insight-action" type="button">记录第一餐</button>
+              </div>
+              <div class="diet-water-quick">
+                <div class="diet-water-quick-total"><span>饮水累计</span><strong id="diet-water-total">0 <small>毫升</small></strong></div>
+                <div class="diet-water-target-line"><span id="diet-water-target-status">尚未设置饮水参考目标</span><span id="diet-water-target-value">仅记录</span></div>
+                <div class="diet-progress-track diet-water-progress"><i id="diet-water-progress"></i></div>
+                <form id="diet-water-form" class="diet-water-quick-form">
+                  <label class="field"><span>本次饮水（毫升）</span><input type="number" name="amount_ml" min="50" max="3000" step="50" required placeholder="例如 250" /></label>
+                  <button class="button button-primary" type="submit">记录饮水</button>
+                </form>
+                <p>仅统计你主动记录的饮水量。</p>
+              </div>
+            </div>
+          </article>
+
+        </div>
+        <article class="panel diet-meals-panel">
+          <div class="panel-head"><div><p class="eyebrow">TODAY'S MEALS</p><h3>当天餐食</h3></div><button class="text-button" id="refresh-diet" type="button">刷新</button></div>
+          <label class="diet-complete-row"><input type="checkbox" id="diet-day-complete" /><span>我已记录完这一天吃过的餐食（用于判断数据是否完整）</span></label>
+          <div id="diet-meal-list" class="empty-state" aria-live="polite"><p>选择日期后查看餐食记录。</p></div>
+        </article>
+
+          <div class="diet-flow-heading"><p class="eyebrow">STEP 03 · REVIEW</p><h3>对照目标，回顾营养与饮水</h3><p>查看餐食营养目标和个人饮水参考值的记录情况；积累一段时间的数据后，可回到上方重新生成调整建议。</p></div>
+          <article class="panel diet-nutrition-card">
+            <div class="diet-card-heading"><span class="diet-heading-icon">◒</span><h3>营养成分</h3><span class="diet-date-note">已填写营养值</span></div>
+            <div class="diet-target-notice hidden" id="diet-target-notice" role="status" aria-live="polite">
+              <span id="diet-target-message"></span>
+              <button class="text-button" id="edit-diet-targets" type="button">去补充档案</button>
+            </div>
+            <p class="diet-target-basis hidden" id="diet-target-basis"></p>
+            <div class="diet-macro-layout">
+              <div class="diet-macro-list">
+                <div class="diet-macro-row"><div><span>碳水</span><strong><b id="diet-carbs-total">0</b><small id="diet-carbs-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-carbs-bar"></i></div></div>
+                <div class="diet-macro-row"><div><span>蛋白质</span><strong><b id="diet-protein-total">0</b><small id="diet-protein-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-protein-bar"></i></div></div>
+                <div class="diet-macro-row"><div><span>脂肪</span><strong><b id="diet-fat-total">0</b><small id="diet-fat-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-fat-bar"></i></div></div>
+              </div>
+              <div class="diet-macro-chart" id="diet-macro-chart" aria-label="已记录三大营养素构成"><span id="diet-macro-coverage">等待记录</span></div>
+            </div>
+            <p class="diet-data-note" id="diet-nutrition-note">没有记录的餐食或营养值不代表摄入为零。</p>
+            <div class="diet-hydration-review"><div><span class="eyebrow">HYDRATION REVIEW</span><strong id="diet-water-review-value">尚无饮水记录</strong></div><p id="diet-water-review-note">饮水记录和营养摄入使用同一日期；未记录不代表没有饮水。</p></div>
+          </article>
+
+
 <!-- 周回顾页：选择一周并查看每日状态、日志和汇总。 -->
+      </section>
       <section class="page" id="page-review">
         <div class="section-heading"><div><p class="eyebrow">WEEKLY REVIEW</p><h2>回看这一周</h2></div><span class="tag">训练、饮食与身体变化一起回顾</span></div>
         <article class="panel review-controls">
@@ -304,14 +309,13 @@
       </div>
       <div class="modal-backdrop hidden" id="body-profile-modal" role="presentation">
         <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="body-profile-modal-title" aria-describedby="body-profile-modal-description">
+          <button class="profile-return-button hidden" id="return-account-from-profile" type="button" aria-label="返回" title="返回">←</button>
           <button class="modal-close" id="close-body-profile-modal" type="button" aria-label="关闭身体档案">×</button>
           <p class="eyebrow">GETTING STARTED</p><h2 id="body-profile-modal-title">先认识一下你的训练起点</h2>
-          <p id="body-profile-modal-description" class="profile-modal-intro">填写身体基础数据，后续计划可以参考这些信息。带“选填”的项目可以留空；你也可以跳过，之后点击右上角“我的”并选择管理身体档案。</p>
+          <p id="body-profile-modal-description" class="profile-modal-intro">填写年龄、身高和当前体重；生理性别可留空。BMI 参考值会根据身高和体重计算，不需要填写体脂率或腰围。</p>
           <form id="body-profile-form" class="form-stack">
-            <label class="field"><span>年龄段</span><select name="age_band" required><option value="">请选择</option><option value="under_18">未满 18 岁</option><option value="18_29">18–29 岁</option><option value="30_44">30–44 岁</option><option value="45_59">45–59 岁</option><option value="60_plus">60 岁及以上</option></select></label>
+            <div class="field-row"><label class="field"><span>年龄（岁）</span><input type="number" name="age_years" min="13" max="100" step="1" required placeholder="填写周岁" /></label><label class="field"><span>生理性别（选填，用于代谢估算）</span><select name="biological_sex"><option value="">请选择或不填写</option><option value="female">女性</option><option value="male">男性</option><option value="unspecified">不便提供</option></select></label></div>
             <div class="field-row"><label class="field"><span>身高（厘米）</span><input type="number" name="height_cm" min="100" max="230" step="0.1" required placeholder="例如 170" /></label><label class="field"><span>当前体重（千克）</span><input type="number" name="weight_kg" min="25" max="300" step="0.1" required placeholder="例如 65" /></label></div>
-            <div class="field-row"><label class="field"><span>体脂率（选填，%）</span><input type="number" name="body_fat_percent" min="3" max="70" step="0.1" placeholder="有测量数据再填写" /></label><label class="field"><span>腰围（选填，厘米）</span><input type="number" name="waist_cm" min="30" max="200" step="0.1" placeholder="有测量数据再填写" /></label></div>
-            <label class="field"><span>我的体重目标（选填，千克）</span><input type="number" name="target_weight_kg" min="25" max="300" step="0.1" placeholder="由你自己决定是否设置" /></label><p class="fine-print target-weight-hint">目标只用于查看进度，不会自动改变训练强度或推算达成时间。</p>
             <div class="profile-modal-actions"><button class="button button-quiet" id="skip-body-profile" type="button">跳过，稍后填写</button><button class="button button-danger hidden" id="delete-body-profile" type="button">删除档案和体重记录</button><button class="button button-primary" type="submit">保存并继续</button></div>
           </form>
           <div class="profile-modal-history"><div><p class="eyebrow">WEIGHT HISTORY</p><h3>体重变化</h3></div><div id="body-weight-history" class="empty-state profile-empty"><p>保存身体档案后，这里会显示体重记录。</p></div><p class="fine-print">每次保存档案会记录当天体重；同一天重复保存只保留当天最新数值。</p></div>
@@ -363,7 +367,7 @@
             <article><span>较上次记录</span><b id="account-weight-delta">—</b><small>千克</small></article>
           </div>
           <div class="body-trend-chart" id="account-weight-chart" role="img" aria-label="近期体重变化图"></div>
-          <div class="body-weight-target"><div><span>自设体重目标</span><b id="account-weight-target">尚未设置</b><small id="account-weight-target-progress">可在身体档案中设置</small></div><button class="text-button" id="edit-weight-target" type="button">设置目标</button></div>
+          <div class="body-weight-target"><div><span>自设体重目标</span><b id="account-weight-target">尚未设置</b><small id="account-weight-target-progress">可单独设置体重目标</small></div><button class="text-button" id="edit-weight-target" type="button">设置体重目标</button></div>
           <form class="quick-weight-form" id="quick-weight-form">
             <label class="field"><span>记录今天体重（千克）</span><input type="number" name="weight_kg" min="25" max="300" step="0.1" required placeholder="例如 65" /></label>
             <button class="button button-primary" type="submit">记录</button>
@@ -374,12 +378,29 @@
         <div class="account-dialog-note">训练计划和记录保存在当前账号下的本机数据库。</div>
         <div class="account-dialog-actions"><button class="button button-primary" id="view-profile-button" type="button">管理身体档案</button><button class="button button-quiet" id="logout-button" type="button">退出登录</button></div>
       </dialog>
+      <dialog class="user-dialog weight-target-dialog" id="weight-target-dialog" aria-labelledby="weight-target-dialog-title" aria-describedby="weight-target-dialog-description">
+        <div class="user-dialog-top"><div><p class="eyebrow">WEIGHT GOAL</p><h2 id="weight-target-dialog-title">设置体重目标</h2></div><button class="user-dialog-close" id="close-weight-target-dialog" type="button" aria-label="关闭体重目标设置">×</button></div>
+        <p class="weight-target-description" id="weight-target-dialog-description">目标体重单独管理，只用于查看与当前体重的差距和进度，不会自动改变训练强度或推算达成时间。</p>
+        <form class="form-stack" id="weight-target-form">
+          <label class="field"><span>目标体重（千克）</span><input type="number" name="target_weight_kg" min="25" max="300" step="0.1" required placeholder="例如 60" /></label>
+          <div class="account-dialog-actions weight-target-actions"><button class="button button-quiet" id="clear-weight-target" type="button">清除目标</button><button class="button button-primary" type="submit">保存目标</button></div>
+        </form>
+      </dialog>
       <dialog class="user-dialog avatar-crop-dialog" id="avatar-crop-dialog" aria-labelledby="avatar-crop-title">
         <div class="user-dialog-top"><div><p class="eyebrow">PROFILE PHOTO</p><h2 id="avatar-crop-title">调整头像区域</h2></div><button class="user-dialog-close" id="close-avatar-crop" type="button" aria-label="关闭头像裁剪">×</button></div>
         <p class="avatar-crop-help">拖动方框选择要保留的区域，使用下方滑块调整裁剪范围。</p>
         <div class="avatar-crop-viewport" id="avatar-crop-viewport"><img id="avatar-crop-image" alt="待裁剪的头像图片" /><div class="avatar-crop-selection" id="avatar-crop-selection" role="img" aria-label="可拖动的正方形头像选区"><span></span></div></div>
         <label class="avatar-zoom-control" for="avatar-crop-size"><span>裁剪范围</span><input id="avatar-crop-size" type="range" min="35" max="95" value="68" /><span id="avatar-crop-size-label">68%</span></label>
         <div class="account-dialog-actions avatar-crop-actions"><button class="button button-quiet" id="cancel-avatar-crop" type="button">取消</button><button class="button button-primary" id="save-avatar-crop" type="button">使用此头像</button></div>
+      </dialog>
+      <dialog class="user-dialog training-time-dialog" id="training-time-dialog" aria-labelledby="training-time-title">
+        <div class="user-dialog-top"><div><p class="eyebrow">TRAINING TIME</p><h2 id="training-time-title">选择训练时间</h2></div><button class="user-dialog-close" id="close-training-time-picker" type="button" aria-label="关闭时间选择">×</button></div>
+        <p class="training-time-picker-help">分别设置开始与结束时间，均使用 24 小时制。</p>
+        <div class="training-time-range-selectors">
+          <fieldset><legend>开始时间</legend><div><select id="training-start-hour" aria-label="开始小时"></select><span>:</span><select id="training-start-minute" aria-label="开始分钟"></select></div></fieldset>
+          <fieldset><legend>结束时间</legend><div><select id="training-end-hour" aria-label="结束小时"></select><span>:</span><select id="training-end-minute" aria-label="结束分钟"></select></div></fieldset>
+        </div>
+        <div class="account-dialog-actions training-time-actions"><button class="button button-quiet" id="clear-training-time-picker" type="button">清除</button><button class="button button-quiet" id="cancel-training-time-picker" type="button">取消</button><button class="button button-primary" id="apply-training-time-picker" type="button">确定</button></div>
       </dialog>
       <input class="hidden" id="avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
       <div class="modal-backdrop auth-backdrop" id="auth-gate" role="presentation">
@@ -406,6 +427,6 @@
       </div>    </main>
     <footer><span>青禾训练助理 · V1.9</span><span>本地演示，不构成医疗建议</span></footer>
   </div>
-  <script src="/static/app.js?v=1.9.49" defer></script>
+  <script src="/static/app.js?v=1.9.68" defer></script>
 </body>
 </html>

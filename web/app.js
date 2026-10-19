@@ -105,12 +105,12 @@ $$('.page').forEach((page) => page.classList.toggle('active', page.id === `page-
 }
 
 // 身体档案保存在后端数据库；浏览器只记住用户是否跳过首次建档提示。
-const AGE_BAND_LABELS = { under_18: '未满 18 岁', '18_29': '18–29 岁', '30_44': '30–44 岁', '45_59': '45–59 岁', '60_plus': '60 岁及以上' }
 let profileExists = false
 let activeAccount = null
 let applicationStarted = false
 let profileOnboarding = false
 let profileModalReturnFocus = null
+let profileModalReturnToAccount = false
 
 function wasProfilePromptSkipped() {
   try { return localStorage.getItem('fitnessCoachProfilePromptSkipped:' + activeAccount.id) === 'true' } catch { return false }
@@ -118,17 +118,21 @@ function wasProfilePromptSkipped() {
 function rememberProfilePromptSkipped() {
   try { localStorage.setItem('fitnessCoachProfilePromptSkipped:' + activeAccount.id, 'true') } catch { /* 浏览器禁用存储时仍可继续使用 */ }
 }
-function openBodyProfileModal({ onboarding = false } = {}) {
+function openBodyProfileModal({ onboarding = false, returnToAccount = false } = {}) {
   profileOnboarding = onboarding
+  profileModalReturnToAccount = returnToAccount
   profileModalReturnFocus = document.activeElement
   $('#body-profile-modal').classList.remove('hidden')
   $('#close-body-profile-modal').classList.toggle('hidden', onboarding)
+  $('#return-account-from-profile').classList.toggle('hidden', onboarding)
+  $('#return-account-from-profile').setAttribute('aria-label', returnToAccount ? '返回我的' : '返回上一页')
+  $('#return-account-from-profile').title = returnToAccount ? '返回我的' : '返回上一页'
   $('#skip-body-profile').classList.toggle('hidden', !onboarding)
   $('#body-profile-modal').querySelector('.profile-modal-history').classList.toggle('hidden', onboarding)
   $('#profile-modal-storage-note').classList.toggle('hidden', onboarding)
   $('#body-profile-modal-title').textContent = onboarding ? '先认识一下你的训练起点' : (profileExists ? '编辑个人身体档案' : '填写个人身体档案')
-  $('#body-profile-modal-description').textContent = '填写身体基础数据，后续计划可以参考这些信息。带“选填”的项目可以留空；你也可以跳过，之后在“我的”页面继续填写。'
-  $('#body-profile-form').elements.age_band.focus()
+  $('#body-profile-modal-description').textContent = '填写年龄、身高和当前体重；生理性别可留空。BMI 参考值会根据身高和体重计算，不需要填写体脂率或腰围。饮食规划会读取这里的年龄和性别。'
+  $('#body-profile-form').elements.age_years.focus()
 }
 function closeBodyProfileModal({ skipped = false } = {}) {
   $('#body-profile-modal').classList.add('hidden')
@@ -136,6 +140,12 @@ function closeBodyProfileModal({ skipped = false } = {}) {
   profileModalReturnFocus?.focus()
   profileModalReturnFocus = null
   profileOnboarding = false
+  profileModalReturnToAccount = false
+}
+function returnFromBodyProfileModal() {
+  const returnToAccount = profileModalReturnToAccount
+  closeBodyProfileModal()
+  if (returnToAccount) openAccountDialog()
 }
 
 // 进入“我的”时从服务器加载档案；首次无档案且未跳过时打开可略过的建档弹窗。
@@ -151,29 +161,26 @@ async function loadBodyProfile({ promptIfNeeded = false } = {}) {
     profileExists = Boolean(profile)
     if (!profile) {
       form.reset()
+      form.elements.age_years.value = result.legacy_demographics?.age_years ?? ''
+      form.elements.biological_sex.value = result.legacy_demographics?.biological_sex ?? ''
       editButton.textContent = '填写身体档案'
       removeButton.classList.add('hidden')
       summary.className = 'empty-state profile-empty'
-      summary.innerHTML = '<span class="profile-empty-icon" aria-hidden="true">＋</span><h4>还没有身体档案</h4><p>填写年龄段、身高和体重，后续生成计划时会参考这些基础数据。</p>'
+      summary.innerHTML = '<span class="profile-empty-icon" aria-hidden="true">+</span><h4>还没有身体档案</h4><p>填写年龄、身高和体重；性别可选填，饮食规划会直接读取这些档案数据。</p>'
       historyContainer.className = 'empty-state profile-empty'
       historyContainer.innerHTML = '<p>保存首次身体档案后，这里会开始记录体重变化。</p>'
       if (promptIfNeeded && !wasProfilePromptSkipped()) openBodyProfileModal({ onboarding: true })
       return true
     }
-    form.elements.age_band.value = profile.age_band
+    form.elements.age_years.value = profile.age_years ?? ''
+    form.elements.biological_sex.value = profile.biological_sex ?? ''
     form.elements.height_cm.value = profile.height_cm
     form.elements.weight_kg.value = profile.weight_kg
-    form.elements.target_weight_kg.value = profile.target_weight_kg ?? ''
-    form.elements.body_fat_percent.value = profile.body_fat_percent ?? ''
-    form.elements.waist_cm.value = profile.waist_cm ?? ''
     editButton.textContent = '编辑身体档案'
     removeButton.classList.remove('hidden')
-    const optional = [
-      profile.body_fat_percent == null ? '' : `体脂率 ${escapeHtml(profile.body_fat_percent)}%`,
-      profile.waist_cm == null ? '' : `腰围 ${escapeHtml(profile.waist_cm)} 厘米`,
-    ].filter(Boolean)
     summary.className = 'profile-summary'
-    summary.innerHTML = `<div class="profile-metrics"><div><span>年龄段</span><b>${escapeHtml(AGE_BAND_LABELS[profile.age_band] || '未记录')}</b></div><div><span>身高</span><b>${escapeHtml(profile.height_cm)} <small>cm</small></b></div><div><span>当前体重</span><b>${escapeHtml(profile.weight_kg)} <small>kg</small></b></div></div>${optional.length ? `<p class="profile-optional">${optional.map(escapeHtml).join('　·　')}</p>` : ''}<p class="profile-updated">档案更新于 ${escapeHtml(profile.updated_at)}</p>`
+    const sexLabels = { female: '女性', male: '男性', unspecified: '不便提供' }
+    summary.innerHTML = `<div class="profile-metrics"><div><span>年龄</span><b>${profile.age_years == null ? '待补充' : `${escapeHtml(profile.age_years)} <small>岁</small>`}</b></div><div><span>性别</span><b>${escapeHtml(sexLabels[profile.biological_sex] || '未填写')}</b></div><div><span>身高</span><b>${escapeHtml(profile.height_cm)} <small>cm</small></b></div><div><span>当前体重</span><b>${escapeHtml(profile.weight_kg)} <small>kg</small></b></div></div><p class="profile-updated">档案更新于 ${escapeHtml(profile.updated_at)}</p>`
     const history = (result.weight_history || []).slice(0, 8)
     historyContainer.className = history.length ? 'weight-history-list' : 'empty-state profile-empty'
     historyContainer.innerHTML = history.length
@@ -188,6 +195,7 @@ async function loadBodyProfile({ promptIfNeeded = false } = {}) {
 
 $('#edit-body-profile').addEventListener('click', () => openBodyProfileModal())
 $('#close-body-profile-modal').addEventListener('click', () => closeBodyProfileModal())
+$('#return-account-from-profile').addEventListener('click', returnFromBodyProfileModal)
 $('#skip-body-profile').addEventListener('click', () => closeBodyProfileModal({ skipped: true }))
 $('#body-profile-modal').addEventListener('click', (event) => {
   if (event.target.id !== 'body-profile-modal') return
@@ -213,23 +221,21 @@ $('#body-profile-form').addEventListener('submit', async (event) => {
   event.preventDefault()
   const form = event.currentTarget
   const data = new FormData(form)
-  const optionalNumber = (name) => data.get(name) ? Number(data.get(name)) : null
   const payload = {
-    age_band: data.get('age_band'),
+    age_years: Number(data.get('age_years')),
+    biological_sex: data.get('biological_sex') || null,
     height_cm: Number(data.get('height_cm')),
     weight_kg: Number(data.get('weight_kg')),
-    body_fat_percent: optionalNumber('body_fat_percent'),
-    waist_cm: optionalNumber('waist_cm'),
-    target_weight_kg: optionalNumber('target_weight_kg'),
   }
   try {
     const result = await api('/api/body-profile', { method: 'PUT', body: JSON.stringify(payload) })
+    const returnToAccount = profileModalReturnToAccount
     closeBodyProfileModal({ skipped: true })
     planRecommendationsLoaded = false
     await loadBodyProfile()
     await loadDietTargets()
     if ($('#page-plan').classList.contains('active')) loadPlanRecommendations()
-    notify(`${result.message}如要让新档案用于本周安排，请重新生成本周计划。`)
+    if (returnToAccount) await openAccountDialog()
   } catch (error) {
     notify(error.message, 'error')
   }
@@ -326,7 +332,7 @@ async function loadPlanRecommendations() {
     const profile = profileResult.profile
     const preferences = preferencesResult.preferences
     if (!profile) {
-      context.textContent = '填写身高、体重和年龄段后，我会结合你的档案展示训练方向。'
+      context.textContent = '填写年龄、身高和体重后，我会结合你的档案展示训练方向。'
       options.innerHTML = ''
       fillProfile.classList.remove('hidden')
       planRecommendationsLoaded = true
@@ -1298,11 +1304,11 @@ function renderAccountBodyInsights(profile, weightHistory) {
   const targetWeight = profile.target_weight_kg == null ? null : Number(profile.target_weight_kg)
   $('#account-weight-target').textContent = targetWeight == null ? '尚未设置' : targetWeight.toFixed(1) + ' kg'
   $('#account-weight-target-progress').textContent = targetWeight == null
-    ? '由你自己设定的参考目标'
+    ? '可单独设置体重目标'
     : Math.abs(targetWeight - weight) < 0.05
       ? '已达到你设定的目标'
       : '距离目标 ' + Math.abs(targetWeight - weight).toFixed(1) + ' kg'
-  $('#edit-weight-target').textContent = targetWeight == null ? '设置目标' : '修改目标'
+  $('#edit-weight-target').textContent = targetWeight == null ? '设置体重目标' : '修改体重目标'
   const delta = history.length > 1 ? Number(history[history.length - 1].weight_kg) - Number(history[history.length - 2].weight_kg) : null
   $('#account-weight-delta').textContent = delta == null ? '暂无' : (delta > 0 ? '+' : '') + delta.toFixed(1)
   if (!history.length) {
@@ -1329,6 +1335,17 @@ function renderAccountBodyInsights(profile, weightHistory) {
   module.classList.remove('hidden')
 }
 
+function renderAccountProfileSummary(profile) {
+  const sexLabels = { female: '女性', male: '男性', unspecified: '不便提供' }
+  const details = [
+    ['年龄', profile.age_years == null ? '待补充' : profile.age_years + ' 岁'],
+    ['性别', sexLabels[profile.biological_sex] || '未填写'],
+    ['身高', profile.height_cm + ' 厘米'],
+    ['当前体重', profile.weight_kg + ' 千克'],
+  ]
+  $('#account-dialog-profile-summary').innerHTML = '<div class="account-profile-grid">' + details.map(([label, value]) => '<div><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></div>').join('') + '</div>'
+}
+
 async function openAccountDialog() {
   $('#account-dialog').showModal()
   $('#open-profile-button').setAttribute('aria-expanded', 'true')
@@ -1348,12 +1365,7 @@ async function openAccountDialog() {
       goal.textContent = '填写身体档案后可生成计划'
       return
     }
-    const age = AGE_BAND_LABELS[profile.age_band] || '未记录年龄段'
-    const details = [age, '身高 ' + profile.height_cm + ' 厘米', '体重 ' + profile.weight_kg + ' 千克']
-    if (profile.body_fat_percent != null) details.push('体脂率 ' + profile.body_fat_percent + '%')
-    if (profile.waist_cm != null) details.push('腰围 ' + profile.waist_cm + ' 厘米')
-    if (profile.target_weight_kg != null) details.push('自设目标 ' + profile.target_weight_kg + ' 千克')
-    summary.textContent = details.join(' · ')
+    renderAccountProfileSummary(profile)
     renderAccountBodyInsights(profile, result.weight_history || [])
   } catch (error) {
     summary.textContent = error.message || '身体档案暂时无法读取。'
@@ -1380,11 +1392,7 @@ $('#quick-weight-form').addEventListener('submit', async (event) => {
     const result = await api('/api/body-profile')
     if (result.profile) {
       const profile = result.profile
-      const details = [AGE_BAND_LABELS[profile.age_band] || '未记录年龄段', '身高 ' + profile.height_cm + ' 厘米', '体重 ' + profile.weight_kg + ' 千克']
-      if (profile.body_fat_percent != null) details.push('体脂率 ' + profile.body_fat_percent + '%')
-      if (profile.waist_cm != null) details.push('腰围 ' + profile.waist_cm + ' 厘米')
-      if (profile.target_weight_kg != null) details.push('自设目标 ' + profile.target_weight_kg + ' 千克')
-      $('#account-dialog-profile-summary').textContent = details.join(' · ')
+      renderAccountProfileSummary(profile)
       renderAccountBodyInsights(profile, result.weight_history || [])
     }
     await loadBodyProfile()
@@ -1398,8 +1406,56 @@ $('#quick-weight-form').addEventListener('submit', async (event) => {
   }
 })
 $('#edit-weight-target').addEventListener('click', async () => {
-  closeAccountDialog()
-  if (await loadBodyProfile()) openBodyProfileModal()
+  const input = $('#weight-target-form').elements.target_weight_kg
+  try {
+    const { profile } = await api('/api/body-profile')
+    if (!profile) {
+      notify('请先管理身体档案，再设置体重目标。', 'error')
+      return
+    }
+    input.value = profile.target_weight_kg ?? ''
+    $('#weight-target-dialog-title').textContent = profile.target_weight_kg == null ? '设置体重目标' : '修改体重目标'
+    $('#weight-target-dialog').showModal()
+    input.focus()
+  } catch (error) {
+    notify(error.message || '暂时无法读取身体档案。', 'error')
+  }
+})
+$('#weight-target-form').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const form = event.currentTarget
+  const submitButton = form.querySelector('[type="submit"]')
+  submitButton.disabled = true
+  try {
+    const targetWeight = Number(new FormData(form).get('target_weight_kg'))
+    await api('/api/body-profile/target-weight', { method: 'PUT', body: JSON.stringify({ target_weight_kg: targetWeight }) })
+    $('#weight-target-dialog').close()
+    const { profile, weight_history: history = [] } = await api('/api/body-profile')
+    if (profile) renderAccountBodyInsights(profile, history)
+    await loadDietTargets()
+    notify('体重目标已保存。', 'success')
+  } catch (error) {
+    notify(error.message || '体重目标保存失败。', 'error')
+  } finally {
+    submitButton.disabled = false
+  }
+})
+$('#clear-weight-target').addEventListener('click', async (event) => {
+  const button = event.currentTarget
+  button.disabled = true
+  try {
+    await api('/api/body-profile/target-weight', { method: 'PUT', body: JSON.stringify({ target_weight_kg: null }) })
+    $('#weight-target-form').reset()
+    $('#weight-target-dialog').close()
+    const { profile, weight_history: history = [] } = await api('/api/body-profile')
+    if (profile) renderAccountBodyInsights(profile, history)
+    await loadDietTargets()
+    notify('体重目标已清除。', 'success')
+  } catch (error) {
+    notify(error.message || '体重目标清除失败。', 'error')
+  } finally {
+    button.disabled = false
+  }
 })
 $('#account-goal-button').addEventListener('click', () => {
   closeAccountDialog()
@@ -1409,9 +1465,11 @@ $('#open-profile-button').addEventListener('click', openAccountDialog)
 $('#close-account-dialog').addEventListener('click', closeAccountDialog)
 $('#account-dialog').addEventListener('click', (event) => { if (event.target === $('#account-dialog')) closeAccountDialog() })
 $('#account-dialog').addEventListener('close', () => $('#open-profile-button').setAttribute('aria-expanded', 'false'))
+$('#close-weight-target-dialog').addEventListener('click', () => $('#weight-target-dialog').close())
+$('#weight-target-dialog').addEventListener('click', (event) => { if (event.target === $('#weight-target-dialog')) $('#weight-target-dialog').close() })
 $('#view-profile-button').addEventListener('click', async () => {
   closeAccountDialog()
-  if (await loadBodyProfile()) openBodyProfileModal()
+  if (await loadBodyProfile()) openBodyProfileModal({ returnToAccount: true })
 })
 $('#logout-button').addEventListener('click', async () => {
   try {
@@ -1602,7 +1660,8 @@ let dietSearchResults = []
 let dietSearchKeyword = ''
 let selectedDietFoods = []
 
-function dietSelectedDate() { return $('#diet-date').value || new Date().toISOString().slice(0, 10) }
+function dietSelectedDate() { return $('#diet-date').value || localDateString() }
+function isFutureDietDate(value = dietSelectedDate()) { return value > localDateString() }
 function dietNumber(value, digits = 0) { return value == null || value === '' ? '未记录' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: digits }) }
 function setDietForm(form, data) {
   for (const [key, value] of Object.entries(data || {})) {
@@ -1612,13 +1671,22 @@ function setDietForm(form, data) {
     else field.value = value ?? ''
   }
 }
+function updateTrainingTimeTrigger() {
+  const start = $('#diet-profile-form').elements.training_time.value
+  const end = $('#diet-profile-form').elements.training_end_time.value
+  const button = $('#open-training-time-picker')
+  const value = start && end ? `${start}–${end}` : start ? `开始 ${start}（未设置结束时间）` : '选择开始和结束时间'
+  button.textContent = value
+  button.setAttribute('aria-label', start && end ? `通常训练时段 ${start} 到 ${end}，点击修改` : '选择通常训练开始和结束时间，24小时制')
+}
 function dietFormData(form) {
   const data = Object.fromEntries(new FormData(form).entries())
+  for (const name of ['training_time', 'training_end_time']) if (name in data && !data[name]) data[name] = null
   for (const field of form.querySelectorAll('input[type=number]')) data[field.name] = field.value.trim() === '' ? null : Number(field.value)
   for (const name of ['calories_kcal', 'protein_g', 'carbs_g', 'fat_g']) {
     data[name] = data[name] == null || String(data[name]).trim() === '' ? null : Number(data[name])
   }
-  for (const field of form.querySelectorAll('input[type=checkbox]')) data[field.name] = field.checked
+  for (const field of form.querySelectorAll('input[type=checkbox]')) if (field.name) data[field.name] = field.checked
   return data
 }
 function foodNumber(value) {
@@ -1722,6 +1790,7 @@ function updateSelectedDietFoods() {
 async function loadDietProfile() {
   const result = await api('/api/diet/profile')
   if (result.profile) setDietForm($('#diet-profile-form'), result.profile)
+  updateTrainingTimeTrigger()
 }
 async function loadDietTargets() {
   try {
@@ -1746,6 +1815,28 @@ function renderDietDashboard() {
   const sum = (key) => { const rows = items.filter((x) => x[key] != null); return { value: rows.reduce((n,x) => n + Number(x[key]),0), count: rows.length } }
   const cal = sum('calories_kcal'), carbs = sum('carbs_g'), protein = sum('protein_g'), fat = sum('fat_g')
   const set = (id, value) => { document.getElementById(id).textContent = value }
+  const hydration = dietTargetInfo?.hydration || {}
+  const waterTarget = Number(hydration.target_ml) || null
+  const waterSuggestion = Number(hydration.suggested_ml) || null
+  $('#diet-water-target-hint').textContent = waterSuggestion
+    ? `粗略起点约 ${dietNumber(waterSuggestion)} 毫升/日（体重 × 30 毫升/公斤，按 100 毫升取整）；不是医疗建议，也未自动计入训练额外消耗。可自行调整或留空。`
+    : '这是你自行设定的参考值，不是医疗建议；有特殊健康情况时请遵循医生建议。'
+  $('#use-water-target-suggestion').classList.toggle('hidden', !waterSuggestion)
+  const waterMl = Number(dietLogData?.water_ml) || 0
+  const hasWaterRecord = waterMl > 0
+  const waterProgress = waterTarget && hasWaterRecord ? Math.min(100, waterMl / waterTarget * 100) : 0
+  set('diet-water-target-status', waterTarget
+    ? (hasWaterRecord ? `已记录 ${dietNumber(waterMl)} / ${dietNumber(waterTarget)} 毫升` : `今日尚未记录 · 参考 ${dietNumber(waterTarget)} 毫升`)
+    : (hasWaterRecord ? `已记录 ${dietNumber(waterMl)} 毫升` : '今日尚无饮水记录'))
+  set('diet-water-target-value', waterTarget ? `${Math.round(waterProgress)}%` : '仅记录')
+  $('#diet-water-progress').style.width = `${waterProgress}%`
+  set('diet-water-review-value', waterTarget
+    ? (hasWaterRecord ? `${dietNumber(waterMl)} / ${dietNumber(waterTarget)} 毫升` : `未记录 · 参考 ${dietNumber(waterTarget)} 毫升`)
+    : (hasWaterRecord ? `${dietNumber(waterMl)} 毫升 · 未设置目标` : '尚无饮水记录'))
+  set('diet-water-review-note', waterTarget
+    ? '这是你自行设置的日常参考值；此处仅对照记录，不据此判断缺水。未记录不等于没有饮水。'
+    : '饮水记录和营养摄入使用同一日期；未设置目标时只回顾记录，不推断是否达标。')
+  $('#diet-water-review-value').classList.toggle('is-complete', Boolean(waterTarget && waterProgress >= 100))
   const show = (x) => x.count ? dietNumber(x.value,1) : '—'
   set('diet-calories-total',show(cal))
   $('#diet-calorie-arc').style.strokeDasharray='0 100'
@@ -1778,12 +1869,23 @@ function renderDietDashboard() {
   set('diet-insight-action',items.length?'继续添加餐食':'记录第一餐')
 }
 async function refreshDietLog() {
+  if (isFutureDietDate()) {
+    dietLogData = { items: [], water_ml: 0, day_complete: false }
+    $('#diet-meal-list').className = 'empty-state'
+    $('#diet-meal-list').innerHTML = '<p>这是未来的计划日期，暂时还没有实际摄入记录。</p>'
+    $('#diet-water-total').innerHTML = '0 <small>毫升</small>'
+    $('#diet-day-complete').checked = false
+    $('#diet-day-complete').disabled = true
+    renderDietDashboard()
+    return
+  }
   const result = await api(`/api/diet?log_date=${encodeURIComponent(dietSelectedDate())}`)
   dietLogData = result
   renderDietMeals(result.items || [])
   renderDietDashboard()
   $('#diet-water-total').innerHTML = `${dietNumber(result.water_ml)} <small>毫升</small>`
   $('#diet-day-complete').checked = Boolean(result.day_complete)
+  $('#diet-day-complete').disabled = false
 }
 function renderDietHistory(items) {
   const container = $('#diet-plan-history')
@@ -1803,7 +1905,7 @@ function renderDietPlan(plan) {
     container.innerHTML = `<p>${escapeHtml(plan?.message || fallback)}</p>${plan?.missing?.length ? `<ul>${plan.missing.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : ''}`
     return
   }
-  const s = plan.summary, t = plan.target, records = plan.record_summary || {}
+  const s = plan.summary, t = plan.target, records = plan.record_summary || {}, ai = plan.ai_advice || {}
   const weightTrend = Array.isArray(s.weight_trend_14d) ? s.weight_trend_14d : []
   const weightTrendText = weightTrend.length >= 2
     ? '近 14 天有 ' + weightTrend.length + ' 次体重记录，首末记录变化 ' + (Number(s.weight_change_14d) > 0 ? '+' : '') + dietNumber(s.weight_change_14d, 1) + ' kg（仅描述首末记录，不代表趋势或原因）。'
@@ -1816,33 +1918,77 @@ function renderDietPlan(plan) {
   const metric = (label, value, unit = '') => `<div class="diet-metric"><span>${label}</span><strong>${dietNumber(value, 1)}${unit}</strong></div>`
   const list = (items) => items?.length ? `<ul>${items.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '<p>暂无额外提示。</p>'
   container.className = 'diet-plan-result'
-  container.innerHTML = `<section><h4>数据摘要与依据</h4><div class="diet-metrics">${metric('年龄', s.age_years, ' 岁')}${metric('身高', s.height_cm, ' cm')}${metric('体重', s.weight_kg, ' kg')}${metric('BMI（成人参考）', s.bmi)}${metric('BMR', s.bmr_kcal, ' kcal')}${metric('TDEE', s.tdee_kcal, ' kcal')}</div><p>${escapeHtml(s.goal)}；活动水平：${escapeHtml(s.activity_level)}。BMR 来源：${escapeHtml(s.bmr_source)}；TDEE 来源：${escapeHtml(s.tdee_source)}。</p><p>近期完整记录：${dietNumber(records.coverage?.days_marked_complete)} 天。${escapeHtml(t.basis)}</p></section>
-    <section><h4>近期记录概况</h4><p>近 7 天记录餐次：早餐 ${dietNumber(records.meal_distribution?.counts?.早餐)}、午餐 ${dietNumber(records.meal_distribution?.counts?.午餐)}、晚餐 ${dietNumber(records.meal_distribution?.counts?.晚餐)}、加餐 ${dietNumber(records.meal_distribution?.counts?.加餐)}；填写进食时间 ${dietNumber(records.meal_distribution?.timed_meals)} 餐，填写分量 ${dietNumber(records.meal_distribution?.meals_with_portion)} 餐。</p><p>饮水记录：${dietNumber(records.hydration?.days_logged)} 天；累计 ${dietNumber(records.hydration?.total_ml)} 毫升；有记录日均 ${dietNumber(records.hydration?.average_on_logged_days_ml)} 毫升。未记录日不作零值处理，也不设统一目标。</p><p>训练日完整碳水均值：${dietNumber(records.training_day_comparison?.training_day_carbs_g)} g（${dietNumber(records.training_day_comparison?.training_days_with_data)} 天）；休息日：${dietNumber(records.training_day_comparison?.rest_day_carbs_g)} g（${dietNumber(records.training_day_comparison?.rest_days_with_data)} 天）。</p></section><section><h4>主要差距与提醒</h4>${list(plan.diagnosis)}${plan.warnings?.length ? `<h5>数据质量与安全提醒</h5>${list(plan.warnings)}` : ''}</section>
+  container.innerHTML = `<section><h4>数据摘要与依据</h4><div class="diet-metrics">${metric('身高', s.height_cm, ' cm')}${metric('体重', s.weight_kg, ' kg')}${metric('BMI（成人参考）', s.bmi)}${metric('估算 BMR', s.bmr_kcal, ' kcal')}${metric('估算 TDEE', s.tdee_kcal, ' kcal')}</div><p>${escapeHtml(s.goal)}；活动水平：${escapeHtml(s.activity_level)}。BMR 来源：${escapeHtml(s.bmr_source)}；TDEE 来源：${escapeHtml(s.tdee_source)}。</p><p>近期完整记录：${dietNumber(records.coverage?.days_marked_complete)} 天。${escapeHtml(t.basis)}</p></section>
+    <section><h4>近期记录概况</h4><p>近 7 天记录餐次：早餐 ${dietNumber(records.meal_distribution?.counts?.早餐)}、午餐 ${dietNumber(records.meal_distribution?.counts?.午餐)}、晚餐 ${dietNumber(records.meal_distribution?.counts?.晚餐)}、加餐 ${dietNumber(records.meal_distribution?.counts?.加餐)}；填写进食时间 ${dietNumber(records.meal_distribution?.timed_meals)} 餐，填写分量 ${dietNumber(records.meal_distribution?.meals_with_portion)} 餐。</p><p>饮水记录：${dietNumber(records.hydration?.days_logged)} 天；累计 ${dietNumber(records.hydration?.total_ml)} 毫升；有记录日均 ${dietNumber(records.hydration?.average_on_logged_days_ml)} 毫升；${records.hydration?.target_ml ? `个人参考目标 ${dietNumber(records.hydration.target_ml)} 毫升/日` : '未设置个人目标'}。未记录日不作零值处理，也不据此判断是否缺水。</p><p>训练日完整碳水均值：${dietNumber(records.training_day_comparison?.training_day_carbs_g)} g（${dietNumber(records.training_day_comparison?.training_days_with_data)} 天）；休息日：${dietNumber(records.training_day_comparison?.rest_day_carbs_g)} g（${dietNumber(records.training_day_comparison?.rest_days_with_data)} 天）。</p></section><section><h4>主要差距与提醒</h4>${list(plan.diagnosis)}${plan.warnings?.length ? `<h5>数据质量与安全提醒</h5>${list(plan.warnings)}` : ''}</section>
     <section><h4>每日目标起点</h4><div class="diet-metrics">${metric('能量', t.calories_kcal, ' kcal')}${metric('蛋白质', t.protein_g, ' g')}${metric('碳水', t.carbs_g, ' g')}${metric('脂肪', t.fat_g, ' g')}</div><p>能量占比约：蛋白质 ${dietNumber(t.protein_percent)}%、碳水 ${dietNumber(t.carbs_percent)}%、脂肪 ${dietNumber(t.fat_percent)}%。</p></section>
     <section><h4>体重趋势与目标进度</h4><p>${escapeHtml(weightTrendText)}</p><p>${escapeHtml(weightTargetText)}</p><small>体重数据来源：你记录的体重历史；记录点不足时不计算变化。体重短期波动不能单独说明脂肪或肌肉变化。</small></section>
-    <section><h4>分餐安排与食物示例</h4><div class="diet-meal-targets">${(plan.meal_plan || []).map((meal) => `<article><strong>${escapeHtml(meal.name)}</strong><span>${dietNumber(meal.calories_kcal)} kcal</span><small>蛋白质 ${dietNumber(meal.protein_g)}g · 碳水 ${dietNumber(meal.carbs_g)}g · 脂肪 ${dietNumber(meal.fat_g)}g</small><p>${escapeHtml(plan.food_examples?.find((x) => x.meal === meal.name)?.example || '')}</p></article>`).join('')}</div></section>
+    <section><h4>一周餐次建议</h4><p>每日目标保持一致，餐次例子会结合训练安排与近期记录轮换；未绑定营养数据库的例子不显示精确营养值。</p><div class="diet-week-plan">${(() => {
+      const fallback = [{ date: '', weekday: '每日参考', day_type: '通用安排', meals: (plan.meal_plan || []).map((meal) => ({ ...meal, example: plan.food_examples?.find((item) => item.meal === meal.name)?.example || '' })) }]
+      const days = Array.isArray(plan.weekly_plan) && plan.weekly_plan.length ? plan.weekly_plan : fallback
+      return days.map((day, index) => `<details class="diet-day-plan" data-plan-date="${escapeHtml(day.date || '')}" ${index === 0 ? 'open' : ''}><summary><span><b>${escapeHtml(day.weekday || '计划日')}</b><small>${escapeHtml(day.date || '')}</small></span><span class="tag">${escapeHtml(day.day_type || '参考安排')}</span></summary><div class="diet-day-meals">${(day.meals || []).map((meal) => `<article><div><b>${escapeHtml(meal.name)}</b><small>本餐分配目标：${dietNumber(meal.calories_kcal)} kcal · 蛋白质 ${dietNumber(meal.protein_g)}g · 碳水 ${dietNumber(meal.carbs_g)}g · 脂肪 ${dietNumber(meal.fat_g)}g</small></div><p><b>搭配示例：</b>${escapeHtml(meal.example || '')}</p></article>`).join('')}</div></details>`).join('')
+    })()}</div></section>
     <section><h4>现有习惯与调整</h4><p><b>可保留：</b>${escapeHtml(plan.recorded_habits?.keep || '')}</p><p><b>优先调整：</b>${escapeHtml(plan.recorded_habits?.adjust || '')}</p><p>${escapeHtml(plan.execution_context?.cooking_access || '')}；每周外食 ${dietNumber(plan.execution_context?.eating_out_per_week)} 次；执行条件：${escapeHtml(plan.execution_context?.budget_note || '未填写')}。</p></section>
     <section><h4>追踪与计算说明</h4><p>${escapeHtml(plan.tracking?.period || '')}</p>${list(plan.tracking?.next_data)}<details><summary>查看数据假设与边界</summary>${list(plan.assumptions)}</details></section>`
+  const aiSection = document.createElement('section')
+  aiSection.className = 'diet-ai-advice'
+  const aiTitle = document.createElement('h4')
+  aiTitle.textContent = 'AI 饮食洞察'
+  const aiOverview = document.createElement('p')
+  aiOverview.textContent = ai.overview || '这份历史记录尚未包含 AI 洞察。'
+  const aiChange = document.createElement('p')
+  aiChange.className = 'diet-change-summary'
+  aiChange.textContent = ai.change_summary || plan.change_summary || '计划更新时会说明本次调整依据。'
+  aiSection.append(aiTitle, aiOverview, aiChange)
+  const appendAdviceList = (title, entries) => {
+    if (!Array.isArray(entries) || !entries.length) return
+    const heading = document.createElement('h5')
+    heading.textContent = title
+    const listElement = document.createElement('ul')
+    for (const entry of entries) {
+      const item = document.createElement('li')
+      item.textContent = typeof entry === 'string' ? entry : `${entry.meal}：${entry.example}`
+      listElement.append(item)
+    }
+    aiSection.append(heading, listElement)
+  }
+  appendAdviceList('结合记录的观察', ai.diagnosis)
+  appendAdviceList('训练时段建议', ai.training_timing_advice)
+  container.prepend(aiSection)
 }
 async function refreshDietHistory() {
   const result = await api('/api/diet/plan/history')
   renderDietHistory(result.items || [])
+  if (result.items?.length) renderDietPlan(result.items[0].plan_data)
   renderDietDashboard()
 }
 async function generateDietPlan() {
+  if (!$('#diet-agent-consent').checked) {
+    notify('请先阅读并勾选 AI 数据使用说明；不授权也可以继续记录饮食。', 'error')
+    document.querySelector('.diet-planning-fold').open = true
+    $('#diet-profile-panel').open = true
+    $('#diet-agent-consent').focus()
+    return
+  }
+  const buttons = [$('#generate-diet-plan'), $('#generate-diet-plan-from-result')]
+  buttons.forEach((button) => { button.disabled = true; button.textContent = '正在规划一周…' })
   $('#diet-plan-result').className = 'empty-state'
-  $('#diet-plan-result').innerHTML = '<p>正在结合身体档案、训练安排和近期完整饮食记录生成分析…</p>'
-  try { renderDietPlan(await api('/api/diet/plan')); await refreshDietHistory() }
+  $('#diet-plan-result').innerHTML = '<p>正在结合身体档案、饮食偏好和可用的近期记录生成计划…</p>'
+  try { renderDietPlan(await api('/api/diet/plan', { method: 'POST', body: JSON.stringify({ privacy_consent: true }) })); await refreshDietHistory() }
   catch (error) { $('#diet-plan-result').innerHTML = `<p>${escapeHtml(error.message)}</p>`; notify(error.message, 'error') }
+  finally { buttons.forEach((button, index) => { button.disabled = false; button.textContent = index === 0 ? '生成 / 更新本周计划' : '更新本周计划' }) }
 }
 async function refreshDietPage() {
   if (!activeAccount) return
-  if (!$('#diet-date').value) $('#diet-date').value = new Date().toISOString().slice(0, 10)
+  if (!$('#diet-date').value) $('#diet-date').value = localDateString()
   try { await Promise.all([loadDietProfile(), loadDietTargets(), refreshDietLog(), refreshDietHistory()]) }
   catch (error) { notify(error.message, 'error') }
 }
-$('#diet-date').value = new Date().toISOString().slice(0, 10)
-$('#diet-date').addEventListener('change', () => refreshDietLog().catch((error) => notify(error.message, 'error')))
+$('#diet-date').value = localDateString()
+$('#diet-date').addEventListener('change', () => {
+  refreshDietLog().catch((error) => notify(error.message, 'error'))
+  document.querySelectorAll('.diet-day-plan').forEach((day) => { day.open = day.dataset.planDate === dietSelectedDate() })
+})
+$('#generate-diet-plan-from-result').addEventListener('click', generateDietPlan)
 async function searchDietFoodCatalog() {
   const keyword = $('#diet-food-query').value.trim()
   if (!keyword) { $('#diet-food-query').focus(); $('#diet-food-search-status').textContent = '请先输入食物名称。'; return }
@@ -1907,6 +2053,7 @@ $('#diet-selected-foods').addEventListener('click', (event) => {
   updateSelectedDietFoods()
 })
 function openDietMealDialog(meal = null) {
+  if (isFutureDietDate()) { notify('计划日期还未到，暂时不能记录餐食。', 'info'); return }
   const form = $('#diet-meal-form')
   form.reset()
   selectedDietFoods = []
@@ -1942,10 +2089,77 @@ $('#diet-meal-dialog').addEventListener('click', (event) => { if (event.target =
 $('#refresh-diet').addEventListener('click', () => refreshDietLog().catch((error) => notify(error.message, 'error')))
 $('#refresh-diet-plan-history').addEventListener('click', () => refreshDietHistory().catch((error) => notify(error.message, 'error')))
 $('#generate-diet-plan').addEventListener('click', generateDietPlan)
+const formatTimePart = (value) => String(value).padStart(2, '0')
+for (const id of ['training-start-hour', 'training-end-hour']) {
+  $('#' + id).innerHTML = Array.from({ length: 24 }, (_, hour) => `<option value="${formatTimePart(hour)}">${formatTimePart(hour)}</option>`).join('')
+}
+for (const id of ['training-start-minute', 'training-end-minute']) {
+  $('#' + id).innerHTML = Array.from({ length: 60 }, (_, minute) => `<option value="${formatTimePart(minute)}">${formatTimePart(minute)}</option>`).join('')
+}
+function setTrainingTimePickerValues(start, end) {
+  const [startHour, startMinute] = start.split(':')
+  const [endHour, endMinute] = end.split(':')
+  $('#training-start-hour').value = startHour
+  $('#training-start-minute').value = startMinute
+  $('#training-end-hour').value = endHour
+  $('#training-end-minute').value = endMinute
+}
+$('#open-training-time-picker').addEventListener('click', () => {
+  const currentStart = $('#diet-profile-form').elements.training_time.value || '18:00'
+  const currentEnd = $('#diet-profile-form').elements.training_end_time.value
+  const startMinutes = Number(currentStart.slice(0, 2)) * 60 + Number(currentStart.slice(3))
+  const defaultEndMinutes = Math.min(startMinutes + 60, 23 * 60 + 59)
+  const defaultEnd = `${formatTimePart(Math.floor(defaultEndMinutes / 60))}:${formatTimePart(defaultEndMinutes % 60)}`
+  setTrainingTimePickerValues(currentStart, currentEnd || defaultEnd)
+  $('#training-time-dialog').showModal()
+  $('#open-training-time-picker').setAttribute('aria-expanded', 'true')
+})
+function closeTrainingTimePicker() {
+  $('#training-time-dialog').close()
+  $('#open-training-time-picker').setAttribute('aria-expanded', 'false')
+}
+$('#close-training-time-picker').addEventListener('click', closeTrainingTimePicker)
+$('#cancel-training-time-picker').addEventListener('click', closeTrainingTimePicker)
+$('#apply-training-time-picker').addEventListener('click', () => {
+  const start = `${$('#training-start-hour').value}:${$('#training-start-minute').value}`
+  const end = `${$('#training-end-hour').value}:${$('#training-end-minute').value}`
+  const toMinutes = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+  if (toMinutes(end) <= toMinutes(start)) {
+    notify('训练结束时间需要晚于开始时间。', 'error')
+    return
+  }
+  $('#diet-profile-form').elements.training_time.value = start
+  $('#diet-profile-form').elements.training_end_time.value = end
+  updateTrainingTimeTrigger()
+  closeTrainingTimePicker()
+})
+$('#clear-training-time-picker').addEventListener('click', () => {
+  $('#diet-profile-form').elements.training_time.value = ''
+  $('#diet-profile-form').elements.training_end_time.value = ''
+  updateTrainingTimeTrigger()
+  closeTrainingTimePicker()
+})
+$('#training-time-dialog').addEventListener('click', (event) => { if (event.target === $('#training-time-dialog')) closeTrainingTimePicker() })
+$('#training-time-dialog').addEventListener('close', () => $('#open-training-time-picker').setAttribute('aria-expanded', 'false'))
 $('#diet-profile-form').addEventListener('submit', async (event) => {
   event.preventDefault()
   try { const result = await api('/api/diet/profile', { method: 'PUT', body: JSON.stringify(dietFormData(event.currentTarget)) }); await loadDietTargets(); notify(result.message || '饮食规划档案已保存。', 'success') }
   catch (error) { notify(error.message, 'error') }
+})
+$('#use-water-target-suggestion').addEventListener('click', () => {
+  const suggestion = Number(dietTargetInfo?.hydration?.suggested_ml)
+  if (suggestion) $('#diet-water-target-input').value = String(suggestion)
+})
+$('#open-diet-profile-from-plan').addEventListener('click', async () => {
+  if (dietTargetInfo?.missing?.some((item) => item.includes('身体档案'))) {
+    if (await loadBodyProfile()) openBodyProfileModal()
+    return
+  }
+  const planning = document.querySelector('.diet-planning-fold')
+  const profilePanel = $('#diet-profile-panel')
+  planning.open = true
+  profilePanel.open = true
+  profilePanel.scrollIntoView({ behavior: 'smooth', block: 'start' })
 })
 $('#edit-diet-targets').addEventListener('click', async () => {
   if (dietTargetInfo?.missing?.some((item) => item.includes('身体档案'))) {
@@ -1988,8 +2202,10 @@ $('#diet-meal-form').addEventListener('submit', async (event) => {
 })
 $('#diet-water-form').addEventListener('submit', async (event) => {
   event.preventDefault()
-  const data = dietFormData(event.currentTarget); data.log_date = dietSelectedDate()
-  try { const result = await api('/api/diet/water', { method: 'POST', body: JSON.stringify(data) }); event.currentTarget.reset(); notify(result.message || '饮水记录已累计。', 'success'); await refreshDietLog() }
+  if (isFutureDietDate()) { notify('计划日期还未到，暂时不能记录饮水。', 'info'); return }
+  const form = event.currentTarget
+  const data = dietFormData(form); data.log_date = dietSelectedDate()
+  try { const result = await api('/api/diet/water', { method: 'POST', body: JSON.stringify(data) }); form.reset(); notify(result.message || '饮水记录已累计。', 'success'); await refreshDietLog() }
   catch (error) { notify(error.message, 'error') }
 })
 $('#diet-day-complete').addEventListener('change', async (event) => {

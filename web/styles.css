@@ -38,8 +38,8 @@
 .confirm-modal-actions{display:flex;justify-content:center;gap:10px}.button-danger{background:#a94d40;color:#fff}.button-danger:focus-visible{outline:3px solid #d8aaa3;outline-offset:3px}
 
 /* “我的”用户中心与首次建档弹窗。 */
-.user-center-card{margin-bottom:16px;background:linear-gradient(120deg,#fff 55%,#f1f6ee)}.user-center-heading{display:flex;align-items:center;gap:14px}.user-avatar{display:grid;place-items:center;width:54px;height:54px;flex:0 0 auto;border-radius:17px;background:var(--green);color:var(--lime);font-family:serif;font-size:26px}.user-center-heading>div:nth-child(2){flex:1}.user-center-heading h3{margin:0;font-size:17px}.user-center-heading p:not(.eyebrow){margin:5px 0 0;color:var(--muted);font-size:11px}.user-center-card>.fine-print{margin-top:14px}.profile-dashboard{align-items:stretch}.profile-dashboard>.panel{min-width:0}.profile-actions{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin-top:16px}.profile-actions .text-button{font-size:11px}.profile-empty{justify-items:start;align-content:center}.profile-empty h4{margin:0;color:var(--ink);font-size:14px}.profile-empty-icon{display:grid;place-items:center;width:35px;height:35px;border-radius:11px;background:#eff4ed;color:#63836a;font-size:22px}.profile-summary{gap:13px;padding:0;border:0;background:transparent}.profile-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.profile-metrics>div{display:grid;gap:8px;min-width:0;padding:13px 12px;border:1px solid var(--line);border-radius:9px;background:#fafbf9}.profile-metrics span{color:var(--muted);font-size:10px}.profile-metrics b{font-size:15px}.profile-metrics small,.weight-history-list small{color:var(--muted);font-size:10px;font-weight:500}.profile-optional{margin:0;color:#78867c;font-size:11px}.profile-modal{position:relative;width:min(570px,100%);max-height:min(90vh,850px);overflow:auto;padding:32px;border:1px solid #e4eae2;border-radius:16px;background:#fff;box-shadow:0 24px 80px rgba(16,38,29,.22);animation:alert-pop .18s ease-out}.profile-modal h2{margin:0;font-size:22px}.profile-modal-intro{margin:10px 0 22px;color:var(--muted);font-size:12px;line-height:1.8}.profile-modal .field>span{font-size:12px}.profile-modal .field input,.profile-modal .field select{min-height:45px;font-size:13px}.modal-close{position:absolute;top:17px;right:18px;width:34px;height:34px;border:0;border-radius:50%;background:#f1f4ef;color:#68766e;font-size:24px;cursor:pointer}.profile-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}.profile-modal-actions .button{min-width:130px}.weight-history-list ul{display:grid;gap:0;margin:0;padding:0;list-style:none}.weight-history-list li{display:flex;justify-content:space-between;align-items:center;padding:12px 3px;border-bottom:1px solid #edf0ec;font-size:12px}.weight-history-list time{color:#748078}.weight-history-list b{font-size:14px}.profile-modal button:focus-visible{outline:3px solid #9bc5a3;outline-offset:3px}
-@media(max-width:760px){.user-center-heading{align-items:flex-start;flex-wrap:wrap}.user-center-heading>.tag{margin-left:68px;margin-top:-9px}.profile-metrics{gap:6px}.profile-metrics>div{padding:11px 8px}.profile-metrics b{font-size:13px}.profile-modal{padding:27px 21px}.profile-modal-actions{flex-direction:column-reverse}.profile-modal-actions .button{width:100%}}
+.user-center-card{margin-bottom:16px;background:linear-gradient(120deg,#fff 55%,#f1f6ee)}.user-center-heading{display:flex;align-items:center;gap:14px}.user-avatar{display:grid;place-items:center;width:54px;height:54px;flex:0 0 auto;border-radius:17px;background:var(--green);color:var(--lime);font-family:serif;font-size:26px}.user-center-heading>div:nth-child(2){flex:1}.user-center-heading h3{margin:0;font-size:17px}.user-center-heading p:not(.eyebrow){margin:5px 0 0;color:var(--muted);font-size:11px}.user-center-card>.fine-print{margin-top:14px}.profile-dashboard{align-items:stretch}.profile-dashboard>.panel{min-width:0}.profile-actions{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin-top:16px}.profile-actions .text-button{font-size:11px}.profile-empty{justify-items:start;align-content:center}.profile-empty h4{margin:0;color:var(--ink);font-size:14px}.profile-empty-icon{display:grid;place-items:center;width:35px;height:35px;border-radius:11px;background:#eff4ed;color:#63836a;font-size:22px}.profile-summary{gap:13px;padding:0;border:0;background:transparent}.profile-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.profile-metrics>div{display:grid;gap:8px;min-width:0;padding:13px 12px;border:1px solid var(--line);border-radius:9px;background:#fafbf9}.profile-metrics span{color:var(--muted);font-size:10px}.profile-metrics b{font-size:15px}.profile-metrics small,.weight-history-list small{color:var(--muted);font-size:10px;font-weight:500}.profile-optional{margin:0;color:#78867c;font-size:11px}.profile-modal{position:relative;width:min(570px,100%);max-height:min(90vh,850px);overflow:auto;padding:32px;border:1px solid #e4eae2;border-radius:16px;background:#fff;box-shadow:0 24px 80px rgba(16,38,29,.22);animation:alert-pop .18s ease-out}.profile-modal h2{margin:0;font-size:22px}.profile-modal-intro{margin:10px 0 22px;color:var(--muted);font-size:12px;line-height:1.8}.profile-modal .field>span{font-size:12px}.profile-modal .field input,.profile-modal .field select{min-height:45px;font-size:13px}.modal-close{position:absolute;top:17px;right:18px;width:34px;height:34px;border:0;border-radius:50%;background:#f1f4ef;color:#68766e;font-size:24px;cursor:pointer}.profile-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}.profile-modal-actions .button{min-width:130px}.weight-history-list ul{display:grid;gap:0;margin:0;padding:0;list-style:none}.weight-history-list li{display:flex;justify-content:space-between;align-items:center;padding:12px 3px;border-bottom:1px solid #edf0ec;font-size:12px}.weight-history-list time{color:#748078}.weight-history-list b{font-size:14px}.profile-modal button:focus-visible{outline:3px solid #9bc5a3;outline-offset:3px}
+@media(max-width:760px){.user-center-heading{align-items:flex-start;flex-wrap:wrap}.user-center-heading>.tag{margin-left:68px;margin-top:-9px}.profile-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.profile-metrics>div{padding:11px 8px}.profile-metrics b{font-size:13px}.profile-modal{padding:27px 21px}.profile-modal-actions{flex-direction:column-reverse}.profile-modal-actions .button{width:100%}}
 
 /* 登录注册门禁和账号状态。 */
 .account-actions{display:flex;align-items:center;gap:9px}.account-name{color:#63736a;font-size:11px}.account-actions .button{min-height:34px;padding:0 11px;font-size:11px}.auth-backdrop{z-index:50;overflow-y:auto;overscroll-behavior:contain;background:radial-gradient(ellipse at 14% 12%,#e4ece2 0,transparent 42%),linear-gradient(135deg,#f3f5f0,#e8eee8);backdrop-filter:none}body.auth-open{overflow:hidden}.auth-modal{width:min(430px,100%);max-height:92vh;overflow:auto;padding:31px;border:1px solid #e4eae2;border-radius:17px;background:#fff;box-shadow:0 24px 80px rgba(16,38,29,.25);animation:alert-pop .18s ease-out}.auth-brand-mark{display:grid;place-items:center;width:44px;height:44px;margin-bottom:19px;border-radius:14px;background:var(--green);color:var(--lime);font-family:serif;font-size:23px}.auth-modal h2{margin:0;font-size:23px}.auth-description{margin:8px 0 20px;color:var(--muted);font-size:12px;line-height:1.7}.auth-mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:18px;padding:4px;border-radius:9px;background:#eef2ed}.auth-mode{min-height:37px;border:0;border-radius:7px;background:transparent;color:#77847c;font:inherit;font-size:12px;cursor:pointer}.auth-mode.active{background:#fff;color:var(--ink);box-shadow:0 2px 6px #173a2c12;font-weight:650}.auth-modal .field>span{font-size:11px}.auth-modal .field input{min-height:44px;font-size:12px}.auth-submit{width:100%;margin-top:3px}.auth-error{min-height:16px;margin:0;color:#a94739;font-size:11px;line-height:1.5}.auth-modal .fine-print{margin-top:15px}.auth-modal button:focus-visible{outline:3px solid #9bc5a3;outline-offset:3px}
@@ -108,6 +108,19 @@
 .diet-plan-state p,.diet-analysis-block p{margin:6px 0;color:#6e7c72;font-size:11px;line-height:1.75}
 .diet-plan-state ul,.diet-analysis-block ul,.diet-warning ul{margin:7px 0;padding-left:19px;color:#6e7c72;font-size:11px;line-height:1.8}
 .diet-plan-result{display:grid;gap:4px}
+.diet-week-plan{display:grid;gap:8px;margin-top:12px}
+.diet-day-plan{margin:0!important;padding:11px 13px;border:1px solid #e5ebe5;border-radius:9px;background:#fbfcfa}
+.diet-day-plan>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none}
+.diet-day-plan>summary::-webkit-details-marker{display:none}
+.diet-day-plan>summary>span:first-child{display:grid;gap:3px}
+.diet-day-plan>summary b{color:var(--ink);font-size:12px}
+.diet-day-plan>summary small{color:#89948d;font-size:10px}
+.diet-day-meals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:11px}
+.diet-day-meals article{padding:10px;border-radius:8px;background:#f2f6f1}
+.diet-day-meals article>div{display:grid;gap:4px}
+.diet-day-meals article b{color:var(--ink);font-size:11px}
+.diet-day-meals article small{color:#718079;font-size:9px;line-height:1.5}
+.diet-day-meals article p{margin:5px 0 0;color:#65766b;font-size:10px;line-height:1.65}
 .diet-analysis-block small,.diet-target-card small{color:#8a958d;font-size:10px;line-height:1.7}
 .diet-target-card{display:grid;gap:7px;margin:13px 0;padding:17px;border-radius:10px;background:#eff5ef}
 .diet-target-card h4{margin:0}
@@ -166,6 +179,10 @@
 .diet-target-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:12px 14px;border:1px solid #e7dec8;border-radius:9px;background:#fbf8ef;color:#786b4f;font-size:11px;line-height:1.7}
 .diet-target-notice .text-button{flex:none;color:#176346;font-weight:650}
 .diet-target-basis{margin:0 0 14px;color:#879189;font-size:10px;line-height:1.7}
+.diet-ai-advice{padding:15px!important;border:1px solid #e4ece4;border-radius:10px;background:linear-gradient(135deg,#f8faf6,#fbf9ff)}
+.diet-change-summary{margin:10px 0 0!important;padding:10px 12px;border-radius:8px;background:#eef4ed;color:#416450!important;font-weight:600}
+.diet-ai-advice h5{margin:12px 0 4px;font-size:11px}
+.diet-agent-consent{margin:3px 0 12px;font-size:10px;line-height:1.65}
 .diet-macro-layout{display:grid;grid-template-columns:minmax(0,1fr) 112px;align-items:center;gap:22px}
 .diet-macro-list{display:grid;gap:14px}
 .diet-macro-row>div:first-child{display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;color:#6f7d74;font-size:11px}
@@ -181,6 +198,11 @@
 .diet-macro-chart span{z-index:1;max-width:44px;text-align:center}
 .diet-data-note{margin:15px 0 0;color:#9aa39c;font-size:10px;line-height:1.6}
 .diet-planning-fold{margin-top:15px}
+.diet-flow-heading{margin:24px 0 12px}
+.diet-flow-heading h3{margin:0;font-size:18px;font-weight:600}
+.diet-flow-heading>p:last-child{margin:6px 0 0;color:#77847b;font-size:12px;line-height:1.7}
+.diet-profile-form .field-hint{margin-top:2px;color:#879189;font-size:10px;font-weight:400;line-height:1.6}
+.diet-profile-form .field>label{display:block;margin-bottom:8px;color:#617067;font-size:11px;font-weight:650}
 .diet-planning-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none}
 .diet-planning-fold>summary::-webkit-details-marker{display:none}
 .diet-planning-fold>summary>span:first-child{display:grid;gap:5px}
@@ -193,6 +215,7 @@
 .diet-meal-prompt{margin:0 0 17px;color:#78867d;font-size:11px;line-height:1.75}
 .diet-meal-dialog{width:min(540px,calc(100vw - 30px));max-height:calc(100vh - 28px);overflow-y:auto}
 .diet-meal-dialog .user-dialog-top h2{margin:5px 0 0;font-size:20px}
+.weight-target-dialog{width:min(430px,calc(100vw - 30px))}.weight-target-dialog .user-dialog-top h2{margin:5px 0 0;font-size:20px}.weight-target-description{margin:12px 0 18px;color:var(--muted);font-size:12px;line-height:1.75}.weight-target-dialog .field input{min-height:44px}.weight-target-actions{margin-top:4px}.weight-target-actions .button{min-height:42px}
 .diet-meal-dialog-date{margin:14px 0 18px;padding:10px 12px;border-radius:8px;background:#f4f7f2;color:#718079;font-size:11px}
 .diet-meal-dialog-date b{color:#284c38;font-weight:650}
 .diet-meal-dialog .form-stack{gap:14px}
@@ -233,6 +256,15 @@
 .diet-water-quick-total{display:flex;align-items:center;justify-content:space-between;color:#718079;font-size:11px}
 .diet-water-quick-total strong{color:var(--green);font-size:23px;font-variant-numeric:tabular-nums}
 .diet-water-quick-total small{font-size:10px;font-weight:500}
+.diet-water-target-line{display:flex;justify-content:space-between;gap:8px;color:#718079;font-size:10px}
+.diet-water-progress{height:6px;margin-top:-3px;background:#e8eee8}
+.diet-water-progress i{width:0;background:#27bf8a;transition:width .25s ease}
+.diet-hydration-review{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px;padding:15px 16px;border:1px solid #e6ece6;border-radius:10px;background:#f7f9f6}
+.diet-hydration-review>div{display:grid;gap:4px}
+.diet-hydration-review .eyebrow{margin:0}
+.diet-hydration-review strong{font-size:14px}
+.diet-hydration-review strong.is-complete{color:#17805b}
+.diet-hydration-review>p{max-width:420px;margin:0;color:#77847b;font-size:10px;line-height:1.6}
 .diet-water-quick-form{display:grid;grid-template-columns:minmax(100px,1fr) auto;align-items:end;gap:9px}
 .diet-water-quick-form .field{margin:0}
 .diet-water-quick-form .field>span{margin-bottom:5px;color:#748078;font-size:10px}
@@ -241,6 +273,8 @@
 .diet-water-quick>p{margin:0;color:#9aa39c;font-size:9px;line-height:1.5}
 @media(max-width:760px){.diet-insight-card{grid-column:auto}.diet-insight-content{grid-template-columns:1fr;gap:18px}.diet-water-quick-form{grid-template-columns:minmax(100px,1fr) auto}}
 @media(max-width:420px){.diet-water-quick-form{grid-template-columns:1fr}.diet-water-quick-form .button{width:100%}}
+@media(max-width:600px){.diet-hydration-review{align-items:flex-start;flex-direction:column;gap:8px}}
+@media(max-width:520px){.diet-day-meals{grid-template-columns:1fr}}
 
 .diet-meal-actions{display:flex;align-items:flex-start;gap:10px;flex:0 0 auto}
 .diet-meal-actions .text-button{padding:4px 2px;font-size:10px}
@@ -254,3 +288,6 @@
 @media(max-width:760px){.review-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.review-stat:last-child{grid-column:auto}}
 
 .diet-plan-result section>small{display:block;color:#8a958d;font-size:10px;line-height:1.7}.diet-refresh-note{margin:0 0 12px}
+.profile-return-button{position:absolute;top:17px;right:60px;left:auto;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:50%;background:#f1f4ef;color:#68766e;font-size:22px;line-height:1;cursor:pointer}
+.account-profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.account-profile-grid>div{display:grid;gap:5px;min-width:0;padding:10px 11px;border:1px solid #e7ece6;border-radius:8px;background:#fafbf9}.account-profile-grid span{color:#839087;font-size:10px}.account-profile-grid strong{color:#284c38;font-size:12px;font-weight:650}
+.training-time-control{display:block}.training-time-trigger{width:100%;min-height:41px;padding:10px 11px;border:1px solid #dfe6df;border-radius:7px;background:#fff;color:var(--ink);font:inherit;font-size:12px;text-align:left;cursor:pointer}.training-time-trigger::after{content:'▾';float:right;color:#76847b}.training-time-trigger:focus-visible{border-color:#79a889;outline:3px solid #78a88920}.training-time-dialog{width:min(360px,calc(100vw - 30px))}.training-time-dialog .user-dialog-top h2{margin:5px 0 0;font-size:19px}.training-time-picker-help{margin:12px 0 18px;color:var(--muted);font-size:12px}.training-time-range-selectors{display:grid;gap:12px}.training-time-range-selectors fieldset{display:grid;gap:8px;margin:0;padding:10px;border:1px solid #e5ebe4;border-radius:8px}.training-time-range-selectors legend{padding:0 4px;color:#68776e;font-size:11px;font-weight:650}.training-time-range-selectors fieldset>div{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}.training-time-range-selectors select{min-height:42px;padding:8px;border:1px solid #dfe6df;border-radius:7px;background:#fff;color:var(--ink);font:inherit;font-size:14px;font-variant-numeric:tabular-nums}.training-time-range-selectors fieldset>div>span{color:#829087;font-weight:650}.training-time-actions{grid-template-columns:1fr 1fr 1fr;margin-top:18px}.training-time-actions .button{min-height:40px}
