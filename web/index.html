@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#102820" />
   <title>青禾训练助理 · V1.9</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.9.23" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.9.49" />
 </head>
 <body class="auth-open">
   <div class="shell">
@@ -29,6 +29,7 @@
         <button class="tab active" data-page="today">今日</button>
         <button class="tab" data-page="plan">周计划</button>
         <button class="tab" data-page="log">训练记录</button>
+        <button class="tab" data-page="diet">饮食记录</button>
         <button class="tab" data-page="review">周回顾</button>
         </nav>
 
@@ -164,9 +165,120 @@
         </div>
       </section>
 
+
+<!-- 饮食记录页：按日期记录餐食与累计饮水，作为个人回顾工具。 -->
+      <section class="page" id="page-diet">
+        <div class="section-heading"><div><p class="eyebrow">FOOD & WATER</p><h2>吃得有记录</h2></div><span class="tag">按天回顾</span></div>
+        <article class="panel diet-intro">
+          <p>记录实际饮食，并结合身体档案、训练情况与完整饮食记录生成可追踪的规划参考。数据不足或存在特殊健康情况时，系统会说明原因，不会猜测缺失数据。</p>
+          <label class="field"><span>查看日期</span><input type="date" id="diet-date" required /></label>
+        </article>
+        <div class="diet-dashboard">
+          <article class="panel diet-today-summary">
+            <div class="diet-card-heading"><span class="diet-heading-icon">◉</span><h3>当日饮食摄入</h3><span class="diet-date-note">根据已记录内容</span></div>
+            <div class="diet-energy-layout">
+              <div class="diet-calorie-gauge" id="diet-calorie-gauge" style="--diet-progress:0%"><svg viewBox="0 0 200 112" aria-hidden="true"><path class="diet-gauge-track" d="M 14 100 A 86 86 0 0 1 186 100" pathLength="100"/><path class="diet-gauge-value" id="diet-calorie-arc" d="M 14 100 A 86 86 0 0 1 186 100" pathLength="100"/></svg><div><span>已记录摄入</span><strong id="diet-calories-total">—</strong><small>千卡</small></div></div>
+            </div>
+            <div class="diet-intake-status"><span>碳水 <b id="diet-carbs-status">未记录</b></span><i></i><span>蛋白质 <b id="diet-protein-status">未记录</b></span><i></i><span>脂肪 <b id="diet-fat-status">未记录</b></span></div>
+          </article>
+          <article class="panel diet-insight-card">
+            <p class="eyebrow">DAILY INSIGHT</p>
+            <div class="diet-insight-content">
+              <div class="diet-insight-meal">
+                <h3 id="diet-insight-title">记录今天的饮食，回顾营养结构</h3>
+                <p id="diet-insight-copy">摄入统计依据你录入的餐食与营养数据；未填写的项目不会按零推断。</p>
+                <button class="button button-primary" id="diet-insight-action" type="button">记录第一餐</button>
+              </div>
+              <div class="diet-water-quick">
+                <div class="diet-water-quick-total"><span>饮水累计</span><strong id="diet-water-total">0 <small>毫升</small></strong></div>
+                <form id="diet-water-form" class="diet-water-quick-form">
+                  <label class="field"><span>本次饮水（毫升）</span><input type="number" name="amount_ml" min="50" max="3000" step="50" required placeholder="例如 250" /></label>
+                  <button class="button button-primary" type="submit">记录饮水</button>
+                </form>
+                <p>仅统计你主动记录的饮水量。</p>
+              </div>
+            </div>
+          </article>
+          <article class="panel diet-nutrition-card">
+            <div class="diet-card-heading"><span class="diet-heading-icon">◒</span><h3>营养成分</h3><span class="diet-date-note">已填写营养值</span></div>
+            <div class="diet-target-notice hidden" id="diet-target-notice" role="status" aria-live="polite">
+              <span id="diet-target-message"></span>
+              <button class="text-button" id="edit-diet-targets" type="button">去补充档案</button>
+            </div>
+            <p class="diet-target-basis hidden" id="diet-target-basis"></p>
+            <div class="diet-macro-layout">
+              <div class="diet-macro-list">
+                <div class="diet-macro-row"><div><span>碳水</span><strong><b id="diet-carbs-total">0</b><small id="diet-carbs-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-carbs-bar"></i></div></div>
+                <div class="diet-macro-row"><div><span>蛋白质</span><strong><b id="diet-protein-total">0</b><small id="diet-protein-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-protein-bar"></i></div></div>
+                <div class="diet-macro-row"><div><span>脂肪</span><strong><b id="diet-fat-total">0</b><small id="diet-fat-target">/ 完善档案后显示</small></strong></div><div class="diet-progress-track"><i id="diet-fat-bar"></i></div></div>
+              </div>
+              <div class="diet-macro-chart" id="diet-macro-chart" aria-label="已记录三大营养素构成"><span id="diet-macro-coverage">等待记录</span></div>
+            </div>
+            <p class="diet-data-note" id="diet-nutrition-note">没有记录的餐食或营养值不代表摄入为零。</p>
+          </article>
+        </div>
+        <article class="panel diet-meals-panel">
+          <div class="panel-head"><div><p class="eyebrow">TODAY'S MEALS</p><h3>当天餐食</h3></div><button class="text-button" id="refresh-diet" type="button">刷新</button></div>
+          <label class="diet-complete-row"><input type="checkbox" id="diet-day-complete" /><span>我已记录完这一天吃过的餐食（用于判断数据是否完整）</span></label>
+          <div id="diet-meal-list" class="empty-state" aria-live="polite"><p>选择日期后查看餐食记录。</p></div>
+        </article>
+
+<details class="panel diet-planning-fold"><summary><span><b>个性化饮食规划</b><small>管理身体/饮食档案、生成分析并查看历史</small></span><span class="tag">展开设置</span></summary><div class="diet-planning-content">
+          <details class="panel diet-profile-panel" id="diet-profile-panel">
+          <summary><span><b>饮食规划档案</b><small>补充目标、活动水平、健康约束和饮食偏好</small></span><span class="tag">规划前填写</span></summary>
+          <form id="diet-profile-form" class="form-stack diet-profile-form">
+            <div class="field-row">
+              <label class="field"><span>年龄（岁）</span><input type="number" name="age_years" min="13" max="100" placeholder="具体年龄；未满 18 岁不生成成人目标" /></label>
+              <label class="field"><span>代谢估算所用的生理性别</span><select name="biological_sex"><option value="">请选择</option><option value="female">女性</option><option value="male">男性</option><option value="unspecified">不便提供</option></select></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>健身目标</span><select name="goal"><option value="">请选择</option><option value="fat_loss">减脂</option><option value="muscle_gain">增肌</option><option value="maintain">维持</option><option value="body_shape">塑形</option><option value="performance">提升运动表现</option></select></label>
+              <label class="field"><span>总体活动水平（包含训练）</span><select name="activity_level"><option value="">请选择</option><option value="sedentary">久坐为主</option><option value="light">轻度活动</option><option value="moderate">中等活动</option><option value="active">活动较多</option><option value="very_active">高活动量</option></select></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>训练类型</span><select name="training_type"><option value="">请选择</option><option value="strength">力量</option><option value="cardio">有氧</option><option value="mixed">混合</option><option value="other">其他</option></select></label>
+              <label class="field"><span>通常训练时间（选填）</span><input type="time" name="training_time" /></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>肌肉量（选填，公斤）</span><input type="number" name="muscle_mass_kg" min="10" max="200" step="0.1" placeholder="有可靠测量再填写" /></label>
+              <label class="field"><span>BMR / TDEE（选填，千卡）</span><span class="diet-inline-inputs"><input type="number" name="measured_bmr" min="500" max="6000" placeholder="实测 BMR" /><input type="number" name="measured_tdee" min="800" max="10000" placeholder="实测 TDEE" /></span></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>饮食偏好（如素食）</span><input name="dietary_preference" maxlength="48" placeholder="选填" /></label>
+              <label class="field"><span>过敏源</span><input name="allergies" maxlength="500" placeholder="如无过敏请留空并勾选下方确认" /></label>
+            </div>
+            <label class="confirm-row"><input type="checkbox" name="allergies_reviewed" /><span>我已确认过敏源和忌口；如没有相关情况，已明确确认无。</span></label>
+            <div class="field-row">
+              <label class="field"><span>忌口食物</span><input name="avoid_foods" maxlength="500" placeholder="选填" /></label>
+              <label class="field"><span>烹饪条件</span><select name="cooking_access"><option value="">请选择</option><option value="none">主要外食/无厨房</option><option value="basic">简单烹饪</option><option value="full">可正常烹饪</option></select></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>每周外食次数</span><input type="number" name="eating_out_per_week" min="0" max="21" placeholder="选填" /></label>
+              <label class="field"><span>预算或执行条件</span><input name="budget_note" maxlength="160" placeholder="如预算、宿舍条件等，选填" /></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>慢性病、孕期、进食障碍或其他健康情况</span><textarea name="medical_conditions" rows="2" maxlength="500" placeholder="无则留空；填写后系统会建议咨询专业人士"></textarea></label>
+              <label class="field"><span>伤病或持续疼痛（选填）</span><textarea name="injuries" rows="2" maxlength="500" placeholder="无则留空；有情况时先咨询专业人士"></textarea></label>
+            </div>
+            <label class="confirm-row"><input type="checkbox" name="health_reviewed" /><span>我已确认并填写上面的健康约束；如有特殊健康情况，愿意先咨询医生或注册营养师。</span></label>
+            <div class="diet-profile-actions"><button class="button button-primary" type="submit">保存规划档案</button><button class="button button-quiet" id="generate-diet-plan" type="button">生成饮食分析与规划</button></div>
+            <p class="fine-print">年龄与生理性别仅用于成人代谢公式估算。疾病、孕期、进食障碍等情况下不生成热量或营养素处方。</p>
+          </form>
+        </details>
+        <article class="panel diet-plan-panel">
+          <div class="panel-head"><div><p class="eyebrow">PERSONALIZED REVIEW</p><h3>饮食分析与规划</h3></div><span class="tag">基于已记录数据</span></div>
+          <p class="fine-print diet-refresh-note">规划会读取当前身体档案、饮食档案及近 7 天完整餐食记录，并参考近 14 天体重记录。更新档案或餐食后，请重新生成分析以刷新结论；每次生成会保存一份历史快照。</p>
+          <div id="diet-plan-result" class="empty-state" aria-live="polite"><p>填写身体档案和饮食规划档案，记录几天餐食后，即可生成分析。</p></div>
+        </article>
+        <article class="panel diet-history-panel">
+          <div class="panel-head"><div><p class="eyebrow">SAVED REVIEWS</p><h3>近期规划记录</h3></div><button class="text-button" id="refresh-diet-plan-history" type="button">刷新</button></div>
+          <div id="diet-plan-history" class="empty-state"><p>生成规划后，会保留历史快照供你对比。</p></div>
+        </article>
+        </div></details></section>
+
 <!-- 周回顾页：选择一周并查看每日状态、日志和汇总。 -->
       <section class="page" id="page-review">
-        <div class="section-heading"><div><p class="eyebrow">WEEKLY REVIEW</p><h2>回看这一周</h2></div><span class="tag">缺失数据按“未记录”显示</span></div>
+        <div class="section-heading"><div><p class="eyebrow">WEEKLY REVIEW</p><h2>回看这一周</h2></div><span class="tag">训练、饮食与身体变化一起回顾</span></div>
         <article class="panel review-controls">
           <div class="week-picker">
             <button class="button button-quiet" id="previous-week" type="button" aria-label="上一周">← 上一周</button>
@@ -174,7 +286,7 @@
             <button class="button button-quiet" id="next-week" type="button" aria-label="下一周">下一周 →</button>
             <button class="button button-quiet" id="current-week" type="button">回到本周</button>
           </div>
-          <p class="fine-print">只能查看本地档案起始日及之后的记录。没有训练日志不代表休息；未填写的 RPE、睡眠或静息心率不参与平均或判断。</p>
+          <p class="fine-print">只能查看本地档案起始日及之后的记录。训练、饮食、饮水和体重均按实际记录汇总；缺失数据会标记为未记录，不会推断。</p>
         </article>
         <div class="review-range" id="review-range" aria-live="polite"></div>
         <div class="review-stats" id="review-stats" aria-live="polite"></div>
@@ -213,6 +325,32 @@
           <div class="confirm-modal-actions"><button class="button button-quiet" id="cancel-body-profile-delete" type="button">取消</button><button class="button button-danger" id="confirm-body-profile-delete" type="button">确认删除</button></div>
         </section>
       </div>
+      <dialog class="user-dialog diet-meal-dialog" id="diet-meal-dialog" aria-labelledby="diet-meal-dialog-title">
+        <div class="user-dialog-top"><div><p class="eyebrow">MEAL NOTES</p><h2 id="diet-meal-dialog-title">记录一餐</h2></div><button class="user-dialog-close" id="close-diet-meal-dialog" type="button" aria-label="关闭餐食记录">×</button></div>
+        <p class="diet-meal-dialog-date">记录日期：<b id="diet-meal-dialog-date"></b></p>
+        <form id="diet-meal-form" class="form-stack">
+              <label class="field"><span>餐别</span><select name="meal_type" required><option value="breakfast">早餐</option><option value="lunch">午餐</option><option value="dinner">晚餐</option><option value="snack">加餐</option></select></label>
+              <p class="fine-print hidden" id="diet-existing-meal-summary"></p>
+              <section class="diet-food-picker" aria-label="搜索并选择食物">
+                <label class="field"><span>搜索食物</span><input id="diet-food-query" type="search" maxlength="80" placeholder="例如：米饭、鸡蛋" autocomplete="off" /></label>
+                <button class="button button-quiet" id="search-diet-foods" type="button">查询薄荷食物库</button>
+                <p class="fine-print" id="diet-food-search-status" aria-live="polite">搜索并选择食物，所选食物会显示在这里。</p>
+                <div id="diet-food-search-results" class="diet-food-search-results" aria-live="polite"></div>
+                <div id="diet-selected-foods" class="diet-selected-foods"></div>
+                <div id="diet-nutrition-summary" class="diet-nutrition-summary hidden" aria-live="polite"></div>
+              </section>
+              <input type="hidden" name="description" />
+              <input type="hidden" name="portion" />
+              <input type="hidden" name="eaten_at" />
+              <input type="hidden" name="calories_kcal" />
+              <input type="hidden" name="protein_g" />
+              <input type="hidden" name="carbs_g" />
+              <input type="hidden" name="fat_g" />
+              <input type="hidden" name="nutrition_source" value="estimate" />
+              <input type="hidden" name="note" />
+              <button class="button button-primary" type="submit">保存餐食</button>
+            </form>
+      </dialog>
       <dialog class="user-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
         <div class="user-dialog-top"><p class="eyebrow">ACCOUNT</p><button class="user-dialog-close" id="close-account-dialog" type="button" aria-label="关闭用户信息">×</button></div>
         <div class="account-dialog-identity"><div class="account-avatar-wrap"><button class="account-avatar-button" id="change-avatar-button" type="button" aria-label="更换头像"><span class="user-avatar" id="account-dialog-avatar" aria-hidden="true">禾</span></button></div><div><p class="eyebrow">本机账号</p><h2 id="account-dialog-title">用户信息</h2><p id="account-dialog-username"></p></div></div>
@@ -250,23 +388,24 @@
           <p class="eyebrow">FITNESS COACH</p>
           <h2 id="auth-title">欢迎使用青禾</h2>
           <p id="auth-description" class="auth-description">登录后查看你自己的身体档案、训练计划和记录。</p>
-          <div class="auth-mode-tabs" role="tablist" aria-label="登录或注册">
-            <button class="auth-mode active" type="button" data-auth-mode="login" role="tab" aria-selected="true">登录</button>
-            <button class="auth-mode" type="button" data-auth-mode="register" role="tab" aria-selected="false">注册账号</button>
-          </div>
-          <form id="auth-form" class="form-stack">
-            <label class="field"><span>用户名</span><input name="username" type="text" required minlength="3" maxlength="24" autocomplete="username" pattern="[A-Za-z0-9_.-]+" placeholder="3–24 位字母、数字或 . _ -" /></label>
+
+          <form id="auth-form" class="form-stack" novalidate>
+            <label class="field"><span>用户名</span><input name="username" type="text" required minlength="3" maxlength="24" autocomplete="username" pattern="[A-Za-z0-9_.-]+" placeholder="3–24 位字母、数字或 . _ -" /><span class="auth-inline-error hidden" id="auth-username-error" role="alert"></span></label>
             <label class="field hidden" id="display-name-field"><span>昵称（选填）</span><input name="display_name" type="text" maxlength="32" autocomplete="nickname" placeholder="在“我的”页面显示" /></label>
-            <label class="field"><span>密码</span><input name="password" type="password" required minlength="8" maxlength="128" autocomplete="current-password" placeholder="至少 8 位" /></label>
-            <label class="field hidden" id="password-confirm-field"><span>确认密码</span><input name="password_confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="再输入一次密码" /></label>
-            <p class="auth-error" id="auth-error" aria-live="polite"></p>
+            <label class="field"><span>密码</span><span class="password-input-wrap"><input name="password" type="password" required minlength="8" maxlength="128" autocomplete="current-password" placeholder="至少 8 位" /><button class="password-toggle" type="button" data-password-toggle="password" aria-label="显示密码" aria-pressed="false" title="显示密码"></button></span></label>
+            <label class="field hidden" id="password-confirm-field"><span>确认密码</span><span class="password-input-wrap"><input name="password_confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="再输入一次密码" /><button class="password-toggle" type="button" data-password-toggle="password_confirm" aria-label="显示密码" aria-pressed="false" title="显示密码"></button></span><span class="auth-inline-error hidden" id="password-confirm-error" role="alert"></span></label>
+            <p class="auth-error" id="auth-error" role="alert" aria-live="assertive"></p>
             <button class="button button-primary auth-submit" id="auth-submit" type="submit">登录</button>
           </form>
+          <div class="auth-mode-switch">
+            <p id="auth-switch-login">没有账号？<button type="button" data-auth-mode="register">前往注册</button></p>
+            <p class="hidden" id="auth-switch-register">已经有账号？<button type="button" data-auth-mode="login">前往登录</button></p>
+          </div>
           <p class="fine-print">本机演示账号。密码以不可逆散列形式保存；忘记密码时目前需由管理员处理数据库账号。</p>
         </section>
       </div>    </main>
     <footer><span>青禾训练助理 · V1.9</span><span>本地演示，不构成医疗建议</span></footer>
   </div>
-  <script src="/static/app.js?v=1.9.24" defer></script>
+  <script src="/static/app.js?v=1.9.49" defer></script>
 </body>
 </html>

@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import os
 import secrets
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -18,11 +18,17 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from .core.security import hash_password, verify_password
+from .services.boohee_food_service import BooheeFoodServiceError, get_food_detail, search_foods
 
 from .database import (
     DEFAULT_TRAINING_WEEKDAYS_BY_COUNT,
     AccountUserRecord,
     DailySignalRecord,
+    DietMealRecord,
+    DailyWaterRecord,
+    DietProfileRecord,
+    DietDayReviewRecord,
+    DietPlanSnapshotRecord,
     BodyProfileRecord,
     BodyWeightHistoryRecord,
     LocalProfileRecord,
@@ -39,6 +45,18 @@ from .database import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = PROJECT_ROOT / "web"
+DIET_ACTIVITY_FACTORS = {
+    "sedentary": 1.2, "light": 1.375, "moderate": 1.55,
+    "active": 1.725, "very_active": 1.9,
+}
+DIET_ACTIVITY_LABELS = {
+    "sedentary": "久坐为主", "light": "轻度活动", "moderate": "中等活动",
+    "active": "活动较多", "very_active": "高活动量",
+}
+DIET_GOAL_LABELS = {
+    "fat_loss": "减脂", "muscle_gain": "增肌", "maintain": "维持",
+    "body_shape": "塑形", "performance": "提升运动表现",
+}
 
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY")
 SESSION_SECRET_PATH = PROJECT_ROOT / ".session_secret"
@@ -157,6 +175,76 @@ class PlanRequest(BaseModel):
             if len(self.training_weekdays) != self.days_per_week:
                 raise ValueError("每周训练天数必须与选择的星期数量一致。")
         return self
+
+
+class DietMealRequest(BaseModel):
+    log_date: date = Field(default_factory=date.today)
+    meal_type: Literal["breakfast", "lunch", "dinner", "snack"]
+    description: str = Field(min_length=1, max_length=500)
+    note: str | None = Field(default=None, max_length=240)
+    portion: str | None = Field(default=None, max_length=120)
+    eaten_at: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    calories_kcal: float | None = Field(default=None, ge=0, le=5000)
+    protein_g: float | None = Field(default=None, ge=0, le=500)
+    carbs_g: float | None = Field(default=None, ge=0, le=1000)
+    fat_g: float | None = Field(default=None, ge=0, le=500)
+    nutrition_source: Literal["label", "estimate"] | None = None
+
+    @model_validator(mode="after")
+    def trim_description(self):
+        self.description = self.description.strip()
+        if not self.description:
+            raise ValueError("请填写餐食内容。")
+        if self.note is not None:
+            self.note = self.note.strip() or None
+        if self.portion is not None:
+            self.portion = self.portion.strip() or None
+        if any(value is not None for value in (self.calories_kcal, self.protein_g, self.carbs_g, self.fat_g)) and self.nutrition_source is None:
+            raise ValueError("填写营养数据时，请注明来自包装标签还是估算。")
+        return self
+
+
+class DietProfileRequest(BaseModel):
+    age_years: int | None = Field(default=None, ge=13, le=100)
+    biological_sex: Literal["female", "male", "unspecified"] | None = None
+    muscle_mass_kg: float | None = Field(default=None, ge=10, le=200)
+    measured_bmr: float | None = Field(default=None, ge=500, le=6000)
+    measured_tdee: float | None = Field(default=None, ge=800, le=10000)
+    goal: Literal["fat_loss", "muscle_gain", "maintain", "body_shape", "performance"] | None = None
+    activity_level: Literal["sedentary", "light", "moderate", "active", "very_active"] | None = None
+    training_type: Literal["strength", "cardio", "mixed", "other"] | None = None
+    training_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    dietary_preference: str | None = Field(default=None, max_length=48)
+    allergies: str | None = Field(default=None, max_length=500)
+    allergies_reviewed: bool = False
+    avoid_foods: str | None = Field(default=None, max_length=500)
+    medical_conditions: str | None = Field(default=None, max_length=500)
+    injuries: str | None = Field(default=None, max_length=500)
+    health_reviewed: bool = False
+    cooking_access: Literal["none", "basic", "full"] | None = None
+    eating_out_per_week: int | None = Field(default=None, ge=0, le=21)
+    budget_note: str | None = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_training_time(self):
+        if self.training_time:
+            try:
+                datetime.strptime(self.training_time, "%H:%M")
+            except ValueError as exc:
+                raise ValueError("训练时间请使用 24 小时制时:分。") from exc
+        for field in ("dietary_preference", "allergies", "avoid_foods", "medical_conditions", "injuries", "budget_note"):
+            value = getattr(self, field)
+            if value is not None:
+                cleaned = value.strip() or None
+                if field == "medical_conditions" and cleaned and cleaned.lower() in ("无", "没有", "无已知疾病", "none", "no"):
+                    cleaned = None
+                setattr(self, field, cleaned)
+        return self
+
+
+class WaterIntakeRequest(BaseModel):
+    log_date: date = Field(default_factory=date.today)
+    amount_ml: int = Field(ge=50, le=3000)
 
 
 class TrainingLog(BaseModel):
@@ -775,6 +863,631 @@ def get_registration_date(db, user_id: int) -> date:
     return profile.registered_on if profile else date.today()
 
 
+def validate_diet_date(db, user_id: int, selected_day: date) -> None:
+    if selected_day < get_registration_date(db, user_id):
+        raise HTTPException(status_code=422, detail="所选日期早于账号注册日期，无法记录饮食。")
+    if selected_day > date.today():
+        raise HTTPException(status_code=422, detail="暂时不能为未来日期记录饮食。")
+
+
+def calculate_diet_targets(body, profile) -> dict:
+    """按身体档案与饮食档案计算每日营养目标起点；不读取或写入历史计划。"""
+    if body is None:
+        return {"status": "needs_data", "missing": ["个人身体档案：身高和当前体重"], "message": "先填写身体档案，才能估算个性化营养目标。"}
+    if body.age_band == "under_18":
+        return {"status": "professional_support", "message": "青少年仍处于生长发育阶段，本工具不生成成人热量或宏量营养素目标；建议和监护人一起咨询医生或注册营养师。"}
+    if profile is None:
+        return {"status": "needs_data", "missing": ["饮食规划档案"], "message": "请补充饮食规划档案后生成个性化目标。"}
+
+    missing = []
+    if profile.age_years is None: missing.append("具体年龄")
+    if profile.biological_sex not in ("female", "male"): missing.append("用于代谢公式的生理性别")
+    if not profile.goal: missing.append("健身目标")
+    if not profile.activity_level: missing.append("日常活动水平")
+    if not profile.health_reviewed: missing.append("健康约束确认")
+    if not profile.allergies_reviewed: missing.append("过敏源与忌口确认")
+    if missing:
+        return {"status": "needs_data", "missing": missing, "message": "补充这些信息后，系统才能计算参考目标。"}
+    if profile.age_years < 18:
+        return {"status": "professional_support", "message": "未满 18 岁不生成成人热量或宏量营养素目标；建议和监护人一起咨询医生或注册营养师。"}
+
+    age_ranges = {"18_29": (18, 29), "30_44": (30, 44), "45_59": (45, 59), "60_plus": (60, 100)}
+    age_range = age_ranges.get(body.age_band)
+    if age_range and not age_range[0] <= profile.age_years <= age_range[1]:
+        return {"status": "data_conflict", "message": "身体档案年龄段与饮食档案中的具体年龄不一致，请先修正后再计算。"}
+    if (profile.medical_conditions or "").strip() or (profile.injuries or "").strip():
+        return {"status": "professional_support", "message": "档案中记录了疾病、孕期、进食障碍、伤病或其他健康情况。请咨询医生或注册营养师后再设定营养目标。"}
+
+    height_m = body.height_cm / 100
+    bmi = body.weight_kg / (height_m * height_m)
+    if profile.measured_bmr is not None:
+        bmr, bmr_source = profile.measured_bmr, "用户提供的测量值"
+    else:
+        sex_adjustment = 5 if profile.biological_sex == "male" else -161
+        bmr = 10 * body.weight_kg + 6.25 * body.height_cm - 5 * profile.age_years + sex_adjustment
+        bmr_source = "Mifflin–St Jeor 公式估算"
+    if profile.measured_tdee is not None:
+        tdee, tdee_source = profile.measured_tdee, "用户提供的测量值"
+    else:
+        factor = DIET_ACTIVITY_FACTORS[profile.activity_level]
+        tdee = bmr * factor
+        tdee_source = f"BMR × 活动系数 {factor}（{DIET_ACTIVITY_LABELS[profile.activity_level]}）"
+    if tdee < bmr:
+        return {"status": "data_conflict", "message": "TDEE 低于 BMR，请核对测量值与活动水平。"}
+    if profile.goal == "fat_loss" and bmi < 18.5:
+        return {"status": "professional_support", "message": "成人 BMI 参考值低于 18.5，系统不会生成减脂目标。建议咨询医生或注册营养师。"}
+
+    if profile.goal == "fat_loss":
+        calorie_target = max(bmr, tdee * 0.9)
+        target_note = "温和约 10% 能量缺口，并确保估算目标不低于 BMR"
+    elif profile.goal == "muscle_gain":
+        calorie_target = tdee * 1.05
+        target_note = "以 TDEE 为基准增加约 5%，属于保守起点"
+    else:
+        calorie_target = tdee
+        target_note = "以估算 TDEE 作为维持基线；塑形不自动等同于减脂"
+    protein_raw = 1.6 * body.weight_kg
+    protein = min(protein_raw, calorie_target * 0.35 / 4)
+    fat = calorie_target * 0.25 / 9
+    carbs = max(0, (calorie_target - protein * 4 - fat * 9) / 4)
+    calorie_target = round(calorie_target)
+    macro_targets = {"protein_g": round(protein), "carbs_g": round(carbs), "fat_g": round(fat)}
+    basis = f"{target_note}；蛋白质按约 1.6 克/公斤体重估算（若超过目标能量的 35% 则限制显示）；脂肪约占能量 25%，剩余能量分配给碳水。"
+    return {
+        "status": "ready",
+        "summary": {
+            "age_years": profile.age_years, "height_cm": body.height_cm, "weight_kg": body.weight_kg,
+            "bmi": round(bmi, 1), "bmr_kcal": round(bmr), "bmr_source": bmr_source,
+            "tdee_kcal": round(tdee), "tdee_source": tdee_source,
+            "goal": DIET_GOAL_LABELS[profile.goal], "activity_level": DIET_ACTIVITY_LABELS[profile.activity_level],
+        },
+        "target": {
+            "calories_kcal": calorie_target, **macro_targets,
+            "protein_percent": round(macro_targets["protein_g"] * 4 / calorie_target * 100),
+            "carbs_percent": round(macro_targets["carbs_g"] * 4 / calorie_target * 100),
+            "fat_percent": round(macro_targets["fat_g"] * 9 / calorie_target * 100),
+            "basis": basis,
+        },
+        "warnings": (["按体重计算的蛋白质目标超过目标能量的 35%，已限制显示；可咨询注册营养师评估。"] if protein < protein_raw else []),
+        "calculation": {"target_note": target_note, "protein_was_capped": protein < protein_raw},
+    }
+
+
+@app.get("/api/diet/foods/search")
+def search_diet_foods(keyword: str = Query(min_length=1, max_length=80), user_id: int = Depends(authenticated_user_id)) -> dict:
+    """通过后端代理搜索薄荷食物库，避免 API Key 暴露到浏览器。"""
+    del user_id  # 此接口要求登录，但不需要读取或保存用户身份数据。
+    try:
+        items = search_foods(keyword.strip())
+    except BooheeFoodServiceError as exc:
+        status_code = 503 if "尚未配置" in str(exc) else 502
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return {"items": items, "source": "boohee"}
+
+
+@app.get("/api/diet/foods/detail")
+def get_diet_food_detail(code: str = Query(min_length=1, max_length=120), user_id: int = Depends(authenticated_user_id)) -> dict:
+    """通过薄荷食物 code 查询营养详情，API Key 仍只保留在后端。"""
+    del user_id
+    try:
+        food = get_food_detail(code.strip())
+    except BooheeFoodServiceError as exc:
+        status_code = 503 if "尚未配置" in str(exc) else 502
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return {"food": food, "source": "boohee"}
+
+
+@app.get("/api/diet/profile")
+def get_diet_profile(user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        profile = db.get(DietProfileRecord, user_id)
+    if profile is None:
+        return {"profile": None}
+    fields = (
+        "age_years", "biological_sex", "muscle_mass_kg", "measured_bmr", "measured_tdee",
+        "goal", "activity_level", "training_type", "training_time", "dietary_preference",
+        "allergies", "allergies_reviewed", "avoid_foods", "medical_conditions", "injuries", "health_reviewed",
+        "cooking_access", "eating_out_per_week", "budget_note",
+    )
+    return {"profile": {field: getattr(profile, field) for field in fields}}
+
+
+@app.get("/api/diet/targets")
+def get_diet_targets(user_id: int = Depends(authenticated_user_id)) -> dict:
+    """按当前身体与饮食档案返回目标起点，不创建饮食计划快照。"""
+    with SessionLocal() as db:
+        body = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
+        profile = db.get(DietProfileRecord, user_id)
+    result = calculate_diet_targets(body, profile)
+    result.pop("calculation", None)
+    return result
+
+
+@app.put("/api/diet/profile")
+def save_diet_profile(payload: DietProfileRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        profile = db.get(DietProfileRecord, user_id)
+        values = payload.model_dump()
+        if profile is None:
+            profile = DietProfileRecord(user_id=user_id, **values)
+            db.add(profile)
+        else:
+            for field, value in values.items():
+                setattr(profile, field, value)
+        db.commit()
+    return {"ok": True, "message": "饮食规划档案已保存。"}
+
+
+@app.put("/api/diet/day-review")
+def save_diet_day_review(
+    log_date: date,
+    complete: bool,
+    user_id: int = Depends(authenticated_user_id),
+) -> dict:
+    with SessionLocal() as db:
+        validate_diet_date(db, user_id, log_date)
+        review = db.get(DietDayReviewRecord, (user_id, log_date))
+        if review is None:
+            review = DietDayReviewRecord(user_id=user_id, log_date=log_date, complete=complete)
+            db.add(review)
+        else:
+            review.complete = complete
+        db.commit()
+    return {"ok": True, "complete": complete, "message": "当天记录完整度已更新。"}
+
+
+@app.get("/api/diet")
+def get_diet_log(log_date: date | None = None, user_id: int = Depends(authenticated_user_id)) -> dict:
+    selected_day = log_date or date.today()
+    with SessionLocal() as db:
+        validate_diet_date(db, user_id, selected_day)
+        meals = db.scalars(select(DietMealRecord).where(
+            DietMealRecord.user_id == user_id, DietMealRecord.log_date == selected_day,
+        ).order_by(DietMealRecord.created_at, DietMealRecord.id)).all()
+        water = db.get(DailyWaterRecord, (user_id, selected_day))
+        review = db.get(DietDayReviewRecord, (user_id, selected_day))
+        items = [{
+            "id": meal.id, "meal_type": meal.meal_type, "description": meal.description,
+            "note": meal.note, "portion": meal.portion, "eaten_at": meal.eaten_at,
+            "calories_kcal": meal.calories_kcal, "protein_g": meal.protein_g,
+            "carbs_g": meal.carbs_g, "fat_g": meal.fat_g,
+            "nutrition_source": meal.nutrition_source,
+            "created_at": meal.created_at.isoformat() if meal.created_at else None,
+        } for meal in meals]
+        water_ml = water.amount_ml if water else 0
+        day_complete = review.complete if review else False
+    return {"log_date": selected_day.isoformat(), "items": items, "water_ml": water_ml, "day_complete": day_complete}
+
+
+def apply_diet_meal_values(meal: DietMealRecord, payload: DietMealRequest) -> None:
+    meal.log_date = payload.log_date
+    meal.meal_type = payload.meal_type
+    meal.description = payload.description
+    meal.note = payload.note
+    meal.portion = payload.portion
+    meal.eaten_at = payload.eaten_at
+    meal.calories_kcal = payload.calories_kcal
+    meal.protein_g = payload.protein_g
+    meal.carbs_g = payload.carbs_g
+    meal.fat_g = payload.fat_g
+    meal.nutrition_source = payload.nutrition_source
+
+
+def diet_meal_response(meal: DietMealRecord) -> dict:
+    return {
+        "id": meal.id, "log_date": meal.log_date.isoformat(), "meal_type": meal.meal_type,
+        "description": meal.description, "note": meal.note, "portion": meal.portion,
+        "eaten_at": meal.eaten_at, "calories_kcal": meal.calories_kcal,
+        "protein_g": meal.protein_g, "carbs_g": meal.carbs_g, "fat_g": meal.fat_g,
+        "nutrition_source": meal.nutrition_source,
+    }
+
+
+def reset_diet_day_review(db, user_id: int, log_date: date) -> None:
+    review = db.get(DietDayReviewRecord, (user_id, log_date))
+    if review is not None and review.complete:
+        review.complete = False
+
+
+@app.post("/api/diet/meal")
+def create_diet_meal(payload: DietMealRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        validate_diet_date(db, user_id, payload.log_date)
+        duplicates = []
+        if payload.meal_type != "snack":
+            duplicates = db.scalars(select(DietMealRecord).where(
+                DietMealRecord.user_id == user_id,
+                DietMealRecord.log_date == payload.log_date,
+                DietMealRecord.meal_type == payload.meal_type,
+            ).order_by(DietMealRecord.id.desc())).all()
+        if duplicates:
+            meal = duplicates[0]
+            for duplicate in duplicates[1:]:
+                db.delete(duplicate)
+            apply_diet_meal_values(meal, payload)
+            meal_label = {"breakfast": "早餐", "lunch": "午餐", "dinner": "晚餐"}[payload.meal_type]
+            message = f"已有{meal_label}记录，已覆盖更新。"
+        else:
+            meal = DietMealRecord(user_id=user_id)
+            apply_diet_meal_values(meal, payload)
+            db.add(meal)
+            message = "餐食记录已保存。"
+        reset_diet_day_review(db, user_id, payload.log_date)
+        db.commit()
+        db.refresh(meal)
+        result = diet_meal_response(meal)
+    return {"ok": True, "meal": result, "message": message}
+
+
+@app.put("/api/diet/meal/{meal_id}")
+def update_diet_meal(meal_id: int, payload: DietMealRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        validate_diet_date(db, user_id, payload.log_date)
+        meal = db.scalar(select(DietMealRecord).where(
+            DietMealRecord.id == meal_id, DietMealRecord.user_id == user_id,
+        ))
+        if meal is None:
+            raise HTTPException(status_code=404, detail="未找到这条餐食记录。")
+        previous_date = meal.log_date
+        collisions = []
+        if payload.meal_type != "snack":
+            collisions = db.scalars(select(DietMealRecord).where(
+                DietMealRecord.user_id == user_id,
+                DietMealRecord.log_date == payload.log_date,
+                DietMealRecord.meal_type == payload.meal_type,
+                DietMealRecord.id != meal.id,
+            ).order_by(DietMealRecord.id.desc())).all()
+        if collisions:
+            canonical = collisions[0]
+            db.delete(meal)
+            for duplicate in collisions[1:]:
+                db.delete(duplicate)
+            meal = canonical
+        apply_diet_meal_values(meal, payload)
+        reset_diet_day_review(db, user_id, previous_date)
+        reset_diet_day_review(db, user_id, payload.log_date)
+        db.commit()
+        db.refresh(meal)
+        result = diet_meal_response(meal)
+    return {"ok": True, "meal": result, "message": "餐食内容已更新。" }
+
+@app.get("/api/diet/plan")
+def get_personal_diet_plan(user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        body = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
+        profile = db.get(DietProfileRecord, user_id)
+        training = db.scalar(select(TrainingPreferencesRecord).where(TrainingPreferencesRecord.user_id == user_id))
+        schedule = db.scalar(select(TrainingSchedulePreferencesRecord).where(TrainingSchedulePreferencesRecord.user_id == user_id))
+        training_logs = db.scalars(select(TrainingLogRecord).where(
+            TrainingLogRecord.user_id == user_id,
+            TrainingLogRecord.training_date >= date.today() - timedelta(days=6),
+            TrainingLogRecord.training_date <= date.today(),
+            TrainingLogRecord.completion.in_(("completed", "partial")),
+        )).all()
+        today = date.today()
+        registration_date = get_registration_date(db, user_id)
+        week_ago = max(today - timedelta(days=6), registration_date)
+        history_start = max(today - timedelta(days=13), registration_date)
+        meals = db.scalars(select(DietMealRecord).where(
+            DietMealRecord.user_id == user_id,
+            DietMealRecord.log_date >= week_ago,
+            DietMealRecord.log_date <= today,
+        )).all()
+        reviews = db.scalars(select(DietDayReviewRecord).where(
+            DietDayReviewRecord.user_id == user_id,
+            DietDayReviewRecord.log_date >= week_ago,
+            DietDayReviewRecord.log_date <= today,
+            DietDayReviewRecord.complete.is_(True),
+        )).all()
+        water_records = db.scalars(select(DailyWaterRecord).where(
+            DailyWaterRecord.user_id == user_id,
+            DailyWaterRecord.log_date >= week_ago,
+            DailyWaterRecord.log_date <= today,
+        )).all()
+        weight_records = db.scalars(select(BodyWeightHistoryRecord).where(
+            BodyWeightHistoryRecord.user_id == user_id,
+            BodyWeightHistoryRecord.recorded_on >= history_start,
+            BodyWeightHistoryRecord.recorded_on <= today,
+        ).order_by(BodyWeightHistoryRecord.recorded_on)).all()
+
+    target_result = calculate_diet_targets(body, profile)
+    if target_result["status"] != "ready":
+        return target_result
+    summary = target_result["summary"]
+    target = target_result["target"]
+    protein_was_capped = target_result["calculation"]["protein_was_capped"]
+    bmi = summary["bmi"]
+    bmr = summary["bmr_kcal"]
+    bmr_source = summary["bmr_source"]
+    tdee = summary["tdee_kcal"]
+    tdee_source = summary["tdee_source"]
+    goal = profile.goal
+    calorie_target = target["calories_kcal"]
+    macro_targets = {key: target[key] for key in ("protein_g", "carbs_g", "fat_g")}
+
+    complete_dates = {row.log_date for row in reviews}
+    by_day = {}
+    discrepancies = []
+    for meal in meals:
+        day = by_day.setdefault(meal.log_date, {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0,
+                                                "kcal_complete": True, "protein_complete": True,
+                                                "carbs_complete": True, "fat_complete": True, "count": 0})
+        day["count"] += 1
+        macros_complete = all(value is not None for value in (meal.protein_g, meal.carbs_g, meal.fat_g))
+        derived_kcal = (meal.protein_g * 4 + meal.carbs_g * 4 + meal.fat_g * 9) if macros_complete else None
+        kcal = meal.calories_kcal if meal.calories_kcal is not None else derived_kcal
+        if kcal is None: day["kcal_complete"] = False
+        else: day["calories"] += kcal
+        for key, value in (("protein", meal.protein_g), ("carbs", meal.carbs_g), ("fat", meal.fat_g)):
+            if value is None: day[key + "_complete"] = False
+            else: day[key] += value
+        if meal.calories_kcal is not None and derived_kcal is not None and max(meal.calories_kcal, derived_kcal) > 0:
+            if abs(meal.calories_kcal - derived_kcal) / max(meal.calories_kcal, derived_kcal) > 0.25:
+                discrepancies.append(meal.log_date.isoformat())
+    tracked_days = [by_day[d] for d in complete_dates if d in by_day]
+    averages = {}
+    metric_day_counts = {}
+    for key, complete_key in (
+        ("calories", "kcal_complete"), ("protein", "protein_complete"),
+        ("carbs", "carbs_complete"), ("fat", "fat_complete"),
+    ):
+        values = [day[key] for day in tracked_days if day[complete_key]]
+        metric_day_counts[key] = len(values)
+        averages[key] = round(sum(values) / len(values)) if len(values) >= 3 else None
+    actual_training_dates = {record.training_date for record in training_logs}
+    training_values = [by_day[d]["carbs"] for d in complete_dates
+                       if d in by_day and d in actual_training_dates and by_day[d]["carbs_complete"]]
+    rest_values = [by_day[d]["carbs"] for d in complete_dates
+                   if d in by_day and d not in actual_training_dates and by_day[d]["carbs_complete"]]
+    training_day_comparison = {
+        "training_days_with_data": len(training_values),
+        "rest_days_with_data": len(rest_values),
+        "training_day_carbs_g": round(sum(training_values) / len(training_values)) if training_values else None,
+        "rest_day_carbs_g": round(sum(rest_values) / len(rest_values)) if rest_values else None,
+    }
+    meal_counts = {label: sum(1 for meal in meals if meal.meal_type == key)
+                   for key, label in (("breakfast", "早餐"), ("lunch", "午餐"), ("dinner", "晚餐"), ("snack", "加餐"))}
+    meal_description_counts = {}
+    for meal in meals:
+        normalized = " ".join(meal.description.split())
+        if normalized:
+            meal_description_counts[normalized] = meal_description_counts.get(normalized, 0) + 1
+    common_meals = [
+        {"description": label, "count": count}
+        for label, count in sorted(meal_description_counts.items(), key=lambda item: (-item[1], item[0]))
+        if count >= 2
+    ][:3]
+    meal_distribution = {
+        "counts": meal_counts,
+        "timed_meals": sum(1 for meal in meals if meal.eaten_at),
+        "meals_with_portion": sum(1 for meal in meals if meal.portion),
+        "repeated_meals": common_meals,
+    }
+    training_timing_review = {"training_days_with_complete_logs": 0, "days_with_meal_time_data": 0,
+                              "days_last_meal_over_4h_before_training": 0}
+    if profile.training_time:
+        training_minute = int(profile.training_time[:2]) * 60 + int(profile.training_time[3:])
+        for day_date in complete_dates.intersection(actual_training_dates):
+            day_meals = [meal for meal in meals if meal.log_date == day_date and meal.eaten_at]
+            if not day_meals:
+                continue
+            training_timing_review["training_days_with_complete_logs"] += 1
+            training_timing_review["days_with_meal_time_data"] += 1
+            meal_minutes = [int(meal.eaten_at[:2]) * 60 + int(meal.eaten_at[3:]) for meal in day_meals]
+            earlier_meals = [minute for minute in meal_minutes if minute <= training_minute]
+            if earlier_meals and training_minute - max(earlier_meals) > 240:
+                training_timing_review["days_last_meal_over_4h_before_training"] += 1
+
+    water_by_day = {record.log_date: record.amount_ml for record in water_records}
+    hydration_summary = {
+        "days_logged": len(water_by_day),
+        "total_ml": sum(water_by_day.values()) if water_by_day else None,
+        "average_on_logged_days_ml": round(sum(water_by_day.values()) / len(water_by_day)) if water_by_day else None,
+    }
+    coverage = {
+        "window_days": 7,
+        "days_marked_complete": len(complete_dates),
+        "days_with_meals": len(by_day),
+        "water_days_logged": hydration_summary["days_logged"],
+        "days_with_complete_nutrition": sum(1 for day in tracked_days if day["kcal_complete"] and day["protein_complete"] and day["carbs_complete"] and day["fat_complete"]),
+        "days_with_each_metric": metric_day_counts,
+        "nutrition_source": "用户录入的包装标签或估算值；未补营养数据的餐次不会按零计算",
+    }
+    diagnosis = []
+    warnings = []
+    if hydration_summary["days_logged"]:
+        diagnosis.append(
+            f"近 7 天记录饮水 {hydration_summary['days_logged']} 天，累计 {hydration_summary['total_ml']} 毫升；有记录日均约 "
+            f"{hydration_summary['average_on_logged_days_ml']} 毫升。未记录日期不按 0 计算，本工具不设统一饮水目标。"
+        )
+    else:
+        diagnosis.append("近 7 天没有饮水量记录，暂时无法回顾饮水情况；可按需记录实际饮水量，本工具不设统一饮水目标。")
+    if len(complete_dates) < 3:
+        diagnosis.append("最近 7 天标记为完整的饮食记录少于 3 天，暂不根据记录计算日均差距；继续记录后再看趋势。")
+    else:
+        if averages["calories"] is None:
+            diagnosis.append("完整日的能量信息仍不齐，暂时不能比较实际能量与目标。")
+        elif averages["calories"] < bmr:
+            warnings.append(f"最近完整记录日的平均摄入约 {averages['calories']} 千卡，低于估算 BMR {round(bmr)} 千卡。记录可能有漏项；若持续如此或正在刻意限制饮食，请优先保证健康并咨询专业人士。")
+        else:
+            diagnosis.append(f"完整记录日的平均能量约 {averages['calories']} 千卡，与目标 {calorie_target} 千卡相差约 {round(averages['calories']-calorie_target):+} 千卡。")
+        if averages["protein"] is not None:
+            diagnosis.append(f"完整记录日蛋白质日均约 {averages['protein']} 克，目标约 {macro_targets['protein_g']} 克，差约 {round(averages['protein']-macro_targets['protein_g']):+} 克。")
+        else:
+            diagnosis.append("蛋白质数据不完整，暂不判断是否达到目标。")
+    if discrepancies:
+        warnings.append("部分餐次的标注热量与按蛋白质/碳水/脂肪（4/4/9 千卡/克）推算值相差超过 25%；请核对份量或标签。")
+    if protein_was_capped:
+        warnings.append("按体重计算的蛋白质目标会超过目标能量的 35%，为避免宏量比例失衡已限制显示值；请让注册营养师结合体成分个别化评估。")
+    if training_values and rest_values:
+        training_day_comparison["carb_difference_g"] = round(training_day_comparison["training_day_carbs_g"] - training_day_comparison["rest_day_carbs_g"])
+        diagnosis.append(f"已记录训练日碳水日均约 {training_day_comparison['training_day_carbs_g']} 克、休息日约 {training_day_comparison['rest_day_carbs_g']} 克（分别 {len(training_values)} 天与 {len(rest_values)} 天完整数据）；此差异仅描述记录，不代表优劣。")
+    elif actual_training_dates:
+        diagnosis.append("最近 7 天有训练记录，但训练日与休息日的完整碳水数据不足，暂不比较两类日期。")
+    if profile.allergies or profile.avoid_foods:
+        warnings.append("食物示例需由你逐项核对过敏原和忌口；文字匹配不能替代标签检查。")
+
+    shares = [("早餐", 0.25), ("午餐", 0.35), ("晚餐", 0.30), ("加餐", 0.10)]
+    meal_plan = [{
+        "name": name,
+        "calories_kcal": round(calorie_target * share),
+        "protein_g": round(macro_targets["protein_g"] * share),
+        "carbs_g": round(macro_targets["carbs_g"] * share),
+        "fat_g": round(macro_targets["fat_g"] * share),
+    } for name, share in shares]
+    food_examples = [
+        {"meal": "早餐", "example": "主食（燕麦或全麦面包）+ 蛋白质来源（鸡蛋、豆制品或乳品中选择适合你的）+ 水果"},
+        {"meal": "午餐", "example": "米饭或杂粮饭 + 鱼、禽肉、豆腐等蛋白质来源 + 蔬菜"},
+        {"meal": "晚餐", "example": "土豆、米饭等主食 + 鱼、蛋、豆制品或瘦肉 + 蔬菜"},
+        {"meal": "加餐", "example": "按偏好选择水果、无糖乳品或豆制品；不饿时可不安排"},
+    ]
+    if profile.allergies or profile.avoid_foods:
+        food_examples = [
+            {"meal": "早餐", "example": "从你确认安全的食物中组合主食、蛋白质来源和水果/蔬菜；逐项核对包装与交叉污染提示。"},
+            {"meal": "午餐", "example": "从你确认安全的主食、蛋白质来源和蔬菜中组合，并按本餐目标调整分量。"},
+            {"meal": "晚餐", "example": "选择符合偏好的安全食材，包含主食、蛋白质来源和蔬菜；不确定时先核对标签。"},
+            {"meal": "加餐", "example": "仅在需要时，从已确认安全的食物中选择。"},
+        ]
+    elif profile.cooking_access == "none":
+        food_examples = [
+            {"meal": "早餐", "example": "外食时按目标组合主食、蛋白质来源和水果；优先查看包装或菜单营养信息。"},
+            {"meal": "午餐", "example": "选择含主食、蛋白质来源和蔬菜的套餐；酱汁可分开放，份量按本餐目标调整。"},
+            {"meal": "晚餐", "example": "外食按主食、蛋白质来源和蔬菜搭配；根据预算选可持续的常见餐食。"},
+            {"meal": "加餐", "example": "按偏好选择方便携带且确认适合自己的食品；不饿时可不安排。"},
+        ]
+    elif profile.dietary_preference and any(term in profile.dietary_preference.lower() for term in ("素食", "纯素", "vegan", "vegetarian")):
+        food_examples = [
+            {"meal": "早餐", "example": "燕麦或全麦面包 + 豆浆/豆腐等植物蛋白 + 水果"},
+            {"meal": "午餐", "example": "米饭或杂粮饭 + 豆腐、豆类等植物蛋白 + 蔬菜"},
+            {"meal": "晚餐", "example": "土豆、米饭等主食 + 豆类或豆制品 + 蔬菜"},
+            {"meal": "加餐", "example": "按偏好选择水果、豆制品或坚果；不饿时可不安排"},
+        ]
+    training_info = {
+        "frequency_days_per_week": training.days_per_week if training else None,
+        "training_days": schedule.weekdays if schedule else None,
+        "training_type": profile.training_type,
+        "training_time": profile.training_time,
+        "session_minutes": training.session_minutes if training else None,
+    }
+    if profile.training_time:
+        if training_timing_review["days_last_meal_over_4h_before_training"]:
+            diagnosis.append(f"在 {training_timing_review['days_with_meal_time_data']} 个同时有完整饮食和进食时间记录的训练日中，有 {training_timing_review['days_last_meal_over_4h_before_training']} 天记录到训练前超过 4 小时没有进食；这只是记录提示，可结合训练感受调整餐次。")
+        else:
+            diagnosis.append(f"训练时段档案为 {profile.training_time}；记录到 {training_timing_review['days_with_meal_time_data']} 个训练日有进食时间数据。可在训练前约 1–3 小时安排正常一餐，训练后约 1–2 小时按下一餐正常进食；无需强行加餐，并结合个人感受调整。")
+    result = {
+        "status": "ready",
+        "summary": {
+            "age_years": profile.age_years, "height_cm": body.height_cm, "weight_kg": body.weight_kg,
+            "target_weight_kg": body.target_weight_kg,
+            "weight_trend_14d": [{"date": row.recorded_on.isoformat(), "weight_kg": row.weight_kg} for row in weight_records],
+            "weight_change_14d": round(weight_records[-1].weight_kg - weight_records[0].weight_kg, 1) if len(weight_records) >= 2 else None,
+            "bmi": round(bmi, 1), "body_fat_percent": body.body_fat_percent,
+            "muscle_mass_kg": profile.muscle_mass_kg,
+            "bmr_kcal": round(bmr), "bmr_source": bmr_source,
+            "tdee_kcal": round(tdee), "tdee_source": tdee_source,
+            "goal": DIET_GOAL_LABELS[goal], "activity_level": DIET_ACTIVITY_LABELS[profile.activity_level],
+            "training": training_info,
+        },
+        "record_summary": {
+            "coverage": coverage, "averages": averages,
+            "hydration": hydration_summary,
+            "training_day_comparison": training_day_comparison,
+            "meal_distribution": meal_distribution,
+            "training_timing_review": training_timing_review,
+        },
+        "diagnosis": diagnosis,
+        "warnings": warnings,
+        "target": target,
+        "meal_plan": meal_plan,
+        "food_examples": food_examples,
+        "execution_context": {
+            "cooking_access": profile.cooking_access or "未填写",
+            "eating_out_per_week": profile.eating_out_per_week,
+            "budget_note": profile.budget_note,
+            "dietary_preference": profile.dietary_preference,
+        },
+        "recorded_habits": {
+            "keep": (
+                "近 7 天重复记录：" + "、".join(f"{item['description']}（{item['count']} 次）" for item in common_meals)
+                + "。重复仅表示你常选择这些餐食，不代表营养质量；可保留其中你确认适合且可持续的部分。"
+                if common_meals else
+                "最近 7 天还没有重复餐食记录，暂时不能识别稳定饮食习惯；继续记录后再比较。"
+            ),
+            "adjust": (
+                f"完整记录显示蛋白质日均约 {averages['protein']} 克，低于当前估算目标约 {round(macro_targets['protein_g'] - averages['protein'])} 克；可把已确认安全的蛋白质来源分配到多餐，并用标签/称量记录复核。"
+                if averages["protein"] is not None and averages["protein"] < macro_targets["protein_g"] else
+                "优先调整完整记录中与目标差距最大的项目；营养数据不完整时先补记，不推断缺失摄入。"
+            ),
+        },
+        "tracking": {
+            "period": "连续记录并每 1–2 周回顾一次；可同时观察体重趋势、体脂率（如有）和训练感受。",
+            "next_data": ["如有可靠来源，补充体脂率/肌肉量或设备测得的 BMR/TDEE", "尽量记录分量和包装标签营养数据", "每天确认是否已记录完整", "如希望回顾饮水情况，可记录实际饮水量；系统不设统一饮水目标"],
+        },
+        "assumptions": [
+            "BMI 为成人筛查参考数值，不用于诊断。",
+            "BMR/TDEE 是估算或用户提供的测量值，会受个体差异影响；请把目标作为起点而非精确处方。",
+            "未提供实测 BMR 时使用 Mifflin–St Jeor：男性 10×体重kg + 6.25×身高cm − 5×年龄 + 5；女性末项为 −161。未提供实测 TDEE 时用 BMR 乘所选活动系数。",
+            "每餐目标按早餐 25%、午餐 35%、晚餐 30%、加餐 10% 分配；可按作息调整，总量近似。",
+            "当前没有内置食物营养数据库，食物示例不含精确营养值；实际分量以食品标签和称量记录为准，并核对过敏原。",
+            "当前未采集微量营养素数据，不判断维生素或矿物质缺口；如有担忧请补充专业评估。",
+        ],
+    }
+    with SessionLocal() as db:
+        db.add(DietPlanSnapshotRecord(user_id=user_id, generated_on=date.today(), plan_data=result))
+        db.commit()
+    return result
+
+
+@app.get("/api/diet/plan/history")
+def get_diet_plan_history(limit: int = Query(default=8, ge=1, le=50), user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        records = db.scalars(
+            select(DietPlanSnapshotRecord)
+            .where(DietPlanSnapshotRecord.user_id == user_id)
+            .order_by(DietPlanSnapshotRecord.created_at.desc(), DietPlanSnapshotRecord.id.desc())
+            .limit(limit)
+        ).all()
+        items = [{
+            "id": item.id,
+            "generated_on": item.generated_on.isoformat(),
+            "created_at": item.created_at.isoformat(),
+            "plan_data": item.plan_data,
+        } for item in records]
+    return {"items": items}
+
+
+@app.delete("/api/diet/meal/{meal_id}")
+def delete_diet_meal(meal_id: int, user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        meal = db.scalar(select(DietMealRecord).where(DietMealRecord.id == meal_id, DietMealRecord.user_id == user_id))
+        if meal is None:
+            raise HTTPException(status_code=404, detail="未找到这条餐食记录。")
+        review = db.get(DietDayReviewRecord, (user_id, meal.log_date))
+        if review is not None and review.complete:
+            review.complete = False
+        db.delete(meal)
+        db.commit()
+    return {"ok": True, "message": "餐食记录已删除；当天完整性标记已重置。"}
+
+
+@app.post("/api/diet/water")
+def add_water_intake(payload: WaterIntakeRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
+    with SessionLocal() as db:
+        validate_diet_date(db, user_id, payload.log_date)
+        water = db.get(DailyWaterRecord, (user_id, payload.log_date))
+        current_amount = water.amount_ml if water else 0
+        if current_amount + payload.amount_ml > 10000:
+            raise HTTPException(status_code=422, detail="当天累计记录不能超过 10000 毫升，请检查输入。")
+        if water is None:
+            water = DailyWaterRecord(user_id=user_id, log_date=payload.log_date, amount_ml=payload.amount_ml)
+            db.add(water)
+        else:
+            water.amount_ml += payload.amount_ml
+        db.commit()
+        total_ml = water.amount_ml
+    return {"ok": True, "water_ml": total_ml, "message": "饮水记录已累计。"}
+
+
 # 保存一条训练日志，并拒绝早于本地档案起始日的记录。
 @app.post("/api/log")
 def create_log(payload: TrainingLog, user_id: int = Depends(authenticated_user_id)) -> dict:
@@ -896,11 +1609,38 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
             WeeklyPlanRecord.week_start == monday,
         ))
         plan_data = plan_record.plan_data if plan_record is not None else None
+        range_start = max(monday, registration_date)
+        diet_meals = db.scalars(select(DietMealRecord).where(
+            DietMealRecord.user_id == user_id,
+            DietMealRecord.log_date >= range_start,
+            DietMealRecord.log_date <= sunday,
+        ).order_by(DietMealRecord.log_date, DietMealRecord.id)).all()
+        water_records = db.scalars(select(DailyWaterRecord).where(
+            DailyWaterRecord.user_id == user_id,
+            DailyWaterRecord.log_date >= range_start,
+            DailyWaterRecord.log_date <= sunday,
+        )).all()
+        diet_reviews = db.scalars(select(DietDayReviewRecord).where(
+            DietDayReviewRecord.user_id == user_id,
+            DietDayReviewRecord.log_date >= range_start,
+            DietDayReviewRecord.log_date <= sunday,
+        )).all()
+        weights = db.scalars(select(BodyWeightHistoryRecord).where(
+            BodyWeightHistoryRecord.user_id == user_id,
+            BodyWeightHistoryRecord.recorded_on >= range_start,
+            BodyWeightHistoryRecord.recorded_on <= sunday,
+        ).order_by(BodyWeightHistoryRecord.recorded_on)).all()
 
     signals_by_day = {record.signal_date: record for record in signals}
     logs_by_day: dict[date, list[TrainingLogRecord]] = {}
     for record in logs:
         logs_by_day.setdefault(record.training_date, []).append(record)
+    diet_by_day: dict[date, list[DietMealRecord]] = {}
+    for record in diet_meals:
+        diet_by_day.setdefault(record.log_date, []).append(record)
+    water_by_day = {record.log_date: record.amount_ml for record in water_records}
+    diet_review_by_day = {record.log_date: record.complete for record in diet_reviews}
+    weight_by_day = {record.recorded_on: record.weight_kg for record in weights}
 
     completion_counts = {"completed": 0, "partial": 0, "skipped": 0}
     rpe_values = []
@@ -961,6 +1701,10 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
         )
         planned_title = saved_log_title or (planned_item.get("title") if planned_item else None)
         day_schedule = serialize_today_schedule(plan_data, day)
+        day_meals = diet_by_day.get(day, [])
+        def sum_logged(field: str) -> float | None:
+            values = [getattr(item, field) for item in day_meals if getattr(item, field) is not None]
+            return round(sum(values), 1) if values else None
         days.append({
             "date": day.isoformat(),
             "before_registration": day < registration_date,
@@ -979,6 +1723,24 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
                 "note": record.note,
                 "planned_session_title": record.planned_session_title,
             } for record in day_logs],
+            "diet": {
+                "meals": [{
+                    "meal_type": item.meal_type,
+                    "description": item.description,
+                } for item in day_meals],
+                "meal_count": len(day_meals),
+                "calories_kcal": sum_logged("calories_kcal"),
+                "calories_logged_count": sum(item.calories_kcal is not None for item in day_meals),
+                "protein_g": sum_logged("protein_g"),
+                "protein_logged_count": sum(item.protein_g is not None for item in day_meals),
+                "carbs_g": sum_logged("carbs_g"),
+                "carbs_logged_count": sum(item.carbs_g is not None for item in day_meals),
+                "fat_g": sum_logged("fat_g"),
+                "fat_logged_count": sum(item.fat_g is not None for item in day_meals),
+                "water_ml": water_by_day.get(day),
+                "complete": diet_review_by_day.get(day),
+            },
+            "weight_kg": weight_by_day.get(day),
         })
 
     return {
@@ -998,6 +1760,12 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
             "planned_partial_count": planned_counts["partial"],
             "planned_skipped_count": planned_counts["skipped"],
             "planned_unlogged_count": planned_counts["unlogged"],
+            "diet_meal_count": len(diet_meals),
+            "diet_days_with_meals": len(diet_by_day),
+            "diet_days_marked_complete": sum(bool(value) for value in diet_review_by_day.values()),
+            "diet_water_days_logged": len(water_by_day),
+            "diet_water_total_ml": sum(water_by_day.values()) if water_by_day else None,
+            "weight_days_logged": len(weight_by_day),
         },
         "days": days,
     }
