@@ -18,6 +18,9 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from .core.security import hash_password, verify_password
+from .api.shaping import create_shaping_router
+from .api.training_intelligence import create_training_intelligence_router
+from .models.training_intelligence import ExerciseLibraryRecord
 from .services.boohee_food_service import BooheeFoodServiceError, get_food_detail, search_foods
 from .services.diet_agent import (
     DietAgentConfigurationError,
@@ -49,7 +52,7 @@ from .database import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-WEB_ROOT = PROJECT_ROOT / "web"
+WEB_ROOT = PROJECT_ROOT / "web" / "dist"
 DIET_ACTIVITY_FACTORS = {
     "sedentary": 1.2, "light": 1.375, "moderate": 1.55,
     "active": 1.725, "very_active": 1.9,
@@ -163,6 +166,7 @@ class PlanRequest(BaseModel):
         default_factory=lambda: ["bodyweight_only"]
     )
     session_minutes: Literal[20, 30, 45, 60] = 30
+    preferred_exercise_ids: list[int] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
     def validate_plan_preferences(self):
@@ -181,6 +185,8 @@ class PlanRequest(BaseModel):
                 raise ValueError("训练星期不能重复。")
             if len(self.training_weekdays) != self.days_per_week:
                 raise ValueError("每周训练天数必须与选择的星期数量一致。")
+        if len(set(self.preferred_exercise_ids)) != len(self.preferred_exercise_ids):
+            raise ValueError("训练动作不能重复选择。")
         return self
 
 
@@ -510,6 +516,7 @@ def serialize_plan_preferences(
         "experience_level": record.experience_level,
         "equipment": record.equipment,
         "session_minutes": record.session_minutes,
+        "preferred_exercise_ids": record.preferred_exercise_ids or [],
     }
 
 
@@ -640,6 +647,15 @@ def get_plan_preferences(user_id: int = Depends(authenticated_user_id)) -> dict:
 def create_plan(payload: PlanRequest, user_id: int = Depends(authenticated_user_id)) -> dict:
     with SessionLocal() as db:
         body_profile = db.scalar(select(BodyProfileRecord).where(BodyProfileRecord.user_id == user_id))
+        requested = db.scalars(select(ExerciseLibraryRecord).where(ExerciseLibraryRecord.id.in_(payload.preferred_exercise_ids))).all() if payload.preferred_exercise_ids else []
+        if len(requested) != len(payload.preferred_exercise_ids):
+            raise HTTPException(status_code=422, detail="选择的训练动作中包含无效动作。")
+        incompatible = [item.name for item in requested if not set(item.equipment).intersection(payload.equipment)]
+        if incompatible:
+            raise HTTPException(status_code=422, detail=f"所选器械不支持这些偏好动作：{'、'.join(incompatible)}。请调整器械或动作。")
+        if not requested:
+            candidates = db.scalars(select(ExerciseLibraryRecord).order_by(ExerciseLibraryRecord.id)).all()
+            requested = [item for item in candidates if any(equipment in payload.equipment for equipment in item.equipment)][:6]
     if body_profile is None:
         raise HTTPException(status_code=409, detail="请先填写个人身体档案，再生成计划。")
     if body_profile.age_band == "under_18":
@@ -707,6 +723,8 @@ def create_plan(payload: PlanRequest, user_id: int = Depends(authenticated_user_
             "focus": session_focus,
             "duration_minutes": payload.session_minutes,
             "description": description,
+            "exercises": [{"id": item.id, "name": item.name, "category": item.category,
+                "target_muscles": item.target_muscles} for item in requested] if session_focus == "力量练习" else [],
         })
 
     plan = {
@@ -740,6 +758,7 @@ def create_plan(payload: PlanRequest, user_id: int = Depends(authenticated_user_
         preferences.experience_level = payload.experience_level
         preferences.equipment = payload.equipment
         preferences.session_minutes = payload.session_minutes
+        preferences.preferred_exercise_ids = payload.preferred_exercise_ids
 
         record = db.scalar(select(WeeklyPlanRecord).where(WeeklyPlanRecord.user_id == user_id, WeeklyPlanRecord.week_start == week_start))
         if record is None:
@@ -1889,3 +1908,21 @@ def weekly_review(week_of: date | None = None, user_id: int = Depends(authentica
         },
         "days": days,
     }
+
+
+app.include_router(create_shaping_router(authenticated_user_id))
+app.include_router(create_training_intelligence_router(
+    authenticated_user_id,
+    require_clear_safety_screen,
+    get_registration_date,
+    serialize_today_schedule,
+    week_start_for,
+))
+
+
+@app.get("/{full_path:path}")
+def spa_fallback(full_path: str) -> FileResponse:
+    """Serve the Vite entry for browser routes; API and static paths keep their own routing."""
+    if full_path.startswith(("api/", "static/")):
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(WEB_ROOT / "index.html")

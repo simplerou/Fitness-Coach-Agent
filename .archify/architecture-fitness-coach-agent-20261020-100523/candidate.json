@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "fitness-coach-agent 架构总览",
+    "locale": "zh-CN",
+    "output": "docs/architecture/fitness-coach-agent-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "浏览器", "sublabel": "用户入口", "pos": [40, 268], "size": [130, 64] },
+    { "id": "spa", "type": "frontend", "label": "Vue 3 单页应用", "sublabel": "web/src · 6 个视图", "pos": [220, 268], "size": [160, 64] },
+    { "id": "api", "type": "backend", "label": "FastAPI 应用", "sublabel": "app/main.py", "tag": "36 个业务接口", "pos": [430, 260], "size": [190, 80] },
+    { "id": "services", "type": "backend", "label": "业务服务层", "sublabel": "安全门禁 / 计划 / 训练 / 档案", "tag": "app/services/", "pos": [670, 260], "size": [190, 80] },
+    { "id": "diet", "type": "backend", "label": "饮食规划 Agent", "sublabel": "LangGraph 工作流", "tag": "diet_agent.py", "pos": [670, 96], "size": [190, 64] },
+    { "id": "pg", "type": "database", "label": "PostgreSQL", "sublabel": "fitness_coach · :5432", "tag": "本机 Windows 服务", "pos": [910, 260], "size": [170, 80] },
+    { "id": "qwen", "type": "external", "label": "通义千问", "sublabel": "qwen-plus-latest", "pos": [920, 96], "size": [170, 64] },
+    { "id": "boohee", "type": "external", "label": "薄荷食物 API", "sublabel": "api.boohee.com", "pos": [670, 430], "size": [190, 64] }
+  ],
+  "connections": [
+    { "id": "browser-to-spa", "from": "browser", "to": "spa" },
+    { "id": "spa-to-api", "from": "spa", "to": "api", "label": "/api", "variant": "emphasis" },
+    { "id": "api-to-services", "from": "api", "to": "services", "label": "调用" },
+    { "id": "services-to-pg", "from": "services", "to": "pg", "label": "SQL", "fromSide": "right", "toSide": "left" },
+    { "id": "services-to-diet", "from": "services", "to": "diet", "label": "生成建议", "fromSide": "top", "toSide": "bottom" },
+    { "id": "diet-to-qwen", "from": "diet", "to": "qwen", "label": "HTTPS", "fromSide": "right", "toSide": "left" },
+    { "id": "services-to-boohee", "from": "services", "to": "boohee", "label": "食物检索", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "前端 web/", "items": ["Vue 3 + TypeScript + Vite + Pinia + Vue Router", "6 个视图：今日 / 计划 / 日志 / 回顾 / 档案 / 饮食", "构建产物 web/dist 由 FastAPI 以 /static 同源托管", "开发时 Vite :5173 把 /api 代理到 :8000"] },
+    { "dot": "emerald", "title": "后端 backend/", "items": ["36 个业务接口全部写在 app/main.py 一个文件里", "启动时 initialize_database() 建表并做幂等 ALTER 迁移", "会话用签名 Cookie，密码以 PBKDF2 散列保存", "app/api、orchestration、tasks 目录目前是 0 字节占位"] },
+    { "dot": "amber", "title": "数据与外部依赖", "items": ["PostgreSQL 18 跑在本机，服务名 postgresql-x64-18", "饮食 Agent 走 LangGraph 调 qwen-plus-latest", "食物检索调薄荷开放 API，无 Key 时该功能不可用", "连接串与两个 API Key 都在 .env，已被 .gitignore"] },
+    { "dot": "rose", "title": "安全门禁", "items": ["当日筛查未通过或命中症状，不给训练建议", "命中症状进入安全暂停，状态持久化到 PostgreSQL", "跨日、重启或解除暂停后都要重新筛查"] }
+  ]
+}

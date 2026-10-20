@@ -195,6 +195,7 @@ class TrainingPreferencesRecord(Base):
     experience_level: Mapped[str] = mapped_column(String(24), nullable=False)
     equipment: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     session_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    preferred_exercise_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
@@ -222,11 +223,17 @@ TENANT_TABLES = (
     "body_weight_history", "weekly_plans", "training_preferences",
     "training_schedule_preferences", "local_safety_state", "diet_meals", "daily_water_intakes",
     "diet_profiles", "diet_day_reviews", "diet_plan_snapshots",
+    "training_exercise_entries", "recovery_checkins", "exercise_advice", "plan_adjustments",
 )
 
 
 def initialize_database() -> None:
     """建表并为旧版单用户表预留账号归属列；实际归属在首个注册时迁移。"""
+    # 显式导入扩展模型，确保直接调用初始化函数时也注册全部表。
+    from .models import shaping as _shaping_models  # noqa: F401
+    from .models import training_intelligence as _training_models  # noqa: F401
+    from .services.exercise_library import ensure_exercise_seed
+
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
         for table_name in TENANT_TABLES:
@@ -249,6 +256,12 @@ def initialize_database() -> None:
             "ELSE '60_plus' END WHERE age_years IS NOT NULL"
         ))
         connection.execute(text('ALTER TABLE training_logs ADD COLUMN IF NOT EXISTS planned_session_title VARCHAR(120)'))
+        connection.execute(text("ALTER TABLE training_preferences ADD COLUMN IF NOT EXISTS preferred_exercise_ids JSON NOT NULL DEFAULT '[]'"))
+        connection.execute(text("ALTER TABLE exercise_library ADD COLUMN IF NOT EXISTS demo_images JSON NOT NULL DEFAULT '[]'"))
+        connection.execute(text('ALTER TABLE exercise_library ADD COLUMN IF NOT EXISTS demo_video_url TEXT'))
+        connection.execute(text('ALTER TABLE exercise_library ADD COLUMN IF NOT EXISTS media_credit VARCHAR(160)'))
+        connection.execute(text('ALTER TABLE exercise_library ADD COLUMN IF NOT EXISTS media_license VARCHAR(80)'))
+        connection.execute(text('ALTER TABLE exercise_library ADD COLUMN IF NOT EXISTS media_source_url TEXT'))
         connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS injuries TEXT'))
         connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS allergies_reviewed BOOLEAN NOT NULL DEFAULT FALSE'))
         connection.execute(text('ALTER TABLE diet_profiles ADD COLUMN IF NOT EXISTS training_end_time VARCHAR(5)'))
@@ -264,6 +277,9 @@ def initialize_database() -> None:
             'UPDATE local_safety_state SET hold_date = CURRENT_DATE '
             'WHERE hold_active = TRUE AND hold_date IS NULL'
         ))
+    with SessionLocal() as db:
+        ensure_exercise_seed(db)
+        db.commit()
 
 
 def claim_legacy_data_for_first_user(db, user_id: int) -> None:
@@ -322,6 +338,7 @@ def initialize_user_defaults(db, user_id: int, registered_on: date) -> None:
         preferences = TrainingPreferencesRecord(
             user_id=user_id, goal="fitness", days_per_week=3,
             experience_level="beginner", equipment=["bodyweight_only"], session_minutes=30,
+            preferred_exercise_ids=[],
         )
         db.add(preferences)
         db.flush()
