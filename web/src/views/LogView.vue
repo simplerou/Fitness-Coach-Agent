@@ -9,8 +9,12 @@ import { createSmartTrainingLog } from '@/api/training'
 import ExerciseEntryEditor from '@/components/training/ExerciseEntryEditor.vue'
 import RecoveryCheckinDialog from '@/components/training/RecoveryCheckinDialog.vue'
 import RecoveryPanel from '@/components/training/RecoveryPanel.vue'
-import TrainingLogHistory from '@/components/training/TrainingLogHistory.vue'
 import type { ExerciseEntryPayload, LogCompletion, RecoveryPayload, SkipReason } from '@/api/types'
+import TrainingTabs from '@/components/training/TrainingTabs.vue'
+import TrainingRecordsTable from '@/components/training/TrainingRecordsTable.vue'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import SectionCard from '@/components/ui/SectionCard.vue'
+import FilterSelect from '@/components/ui/FilterSelect.vue'
 
 const logs = useLogStore()
 const training = useTrainingStore()
@@ -20,6 +24,10 @@ const form = reactive<{ completion: LogCompletion; rpe: number | null; skip_reas
 const exercises = ref<ExerciseEntryPayload[]>([])
 const recoveryDialog = ref<InstanceType<typeof RecoveryCheckinDialog> | null>(null)
 const saving = ref(false)
+const completionOptions = [{ value: 'completed', label: '按计划完成' }, { value: 'partial', label: '部分完成' }, { value: 'skipped', label: '未进行训练' }]
+const skipReasonOptions = [{ value: '', label: '请选择' }, { value: 'no_time', label: '没时间' }, { value: 'too_tired', label: '太累' }, { value: 'discomfort', label: '身体不适' }, { value: 'other', label: '其他' }]
+function setCompletion(value: string): void { form.completion = value as LogCompletion }
+function setSkipReason(value: string): void { form.skip_reason = value as SkipReason | '' }
 const contextText = () => {
   const context = logs.sessionContext
   if (!context) return logs.error || '选择日期后查看对应的周计划安排。'
@@ -63,23 +71,24 @@ async function save(recovery: RecoveryPayload): Promise<void> {
 </script>
 
 <template>
-  <section class="page active">
-    <div class="section-heading"><div><p class="eyebrow">TRAINING LOG</p><h2>练完，记一笔</h2></div><span class="tag">训练后记录</span></div>
+  <section class="page active training-workspace">
+    <PageHeader title="训练记录" :breadcrumbs="['训练', '训练记录']" />
+    <TrainingTabs />
     <RecoveryPanel :summary="training.recovery" />
-    <div class="grid training-log-grid">
-      <article class="panel"><div class="panel-head"><div><p class="eyebrow">SESSION</p><h3>记录本次训练</h3></div><span class="step-no">01</span></div>
+    <div class="training-record-layout">
+      <SectionCard title="记录本次训练" subtitle="保存后会生成恢复与进阶建议">
         <form class="form-stack" @submit.prevent="submit">
           <label class="field"><span>训练日期</span><input v-model="logs.selectedDate" type="date" required /></label>
           <p class="log-plan-context" aria-live="polite">{{ contextText() }}</p>
-          <label class="field"><span>完成情况</span><select v-model="form.completion"><option value="completed">按计划完成</option><option value="partial">部分完成</option><option value="skipped">未进行训练</option></select></label>
+          <label class="field"><span>完成情况</span><FilterSelect :model-value="form.completion" :options="completionOptions" aria-label="完成情况" @update:model-value="setCompletion" /></label>
           <label class="field"><span>主观用力程度 RPE（1–10，可不填）</span><input v-model.number="form.rpe" type="number" min="1" max="10" placeholder="例如 6" /></label>
-          <label v-if="form.completion === 'skipped'" class="field"><span>未完成原因</span><select v-model="form.skip_reason"><option value="">请选择</option><option value="no_time">没时间</option><option value="too_tired">太累</option><option value="discomfort">身体不适</option><option value="other">其他</option></select></label>
+          <label v-if="form.completion === 'skipped'" class="field"><span>未完成原因</span><FilterSelect :model-value="form.skip_reason" :options="skipReasonOptions" aria-label="未完成原因" @update:model-value="setSkipReason" /></label>
           <label class="field"><span>补充说明（可不填）</span><textarea v-model="form.note" rows="2" maxlength="240" placeholder="只填写你愿意记录的内容"></textarea></label>
           <ExerciseEntryEditor v-if="form.completion !== 'skipped'" v-model="exercises" />
           <button class="button button-primary" type="submit" :disabled="saving">{{ saving ? '正在保存…' : '下一步：恢复打卡' }}</button>
         </form>
-      </article>
-      <TrainingLogHistory @notice="notice.notify($event, 'success')" />
+      </SectionCard>
+      <SectionCard title="最近记录" subtitle="双击只读数据不会覆盖原记录"><TrainingRecordsTable /></SectionCard>
     </div>
     <RecoveryCheckinDialog ref="recoveryDialog" @confirm="save" />
   </section>

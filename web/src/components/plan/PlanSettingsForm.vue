@@ -6,6 +6,7 @@ import type { PlanPreferences } from '@/api/types'
 import type { ExerciseDefinition } from '@/api/types'
 import { useTrainingStore } from '@/stores/training'
 import ExerciseLibrary from '@/components/training/ExerciseLibrary.vue'
+import FilterSelect from '@/components/ui/FilterSelect.vue'
 
 const plan = usePlanStore()
 const router = useRouter()
@@ -24,6 +25,10 @@ const equipmentOptions: Array<{ value: PlanPreferences['equipment'][number]; lab
   { value: 'resistance_bands', label: '弹力带' }, { value: 'gym', label: '健身房常见器械' },
 ]
 const rec = computed(() => plan.recommendation())
+const experienceOptions = [{ value: 'beginner', label: '刚开始训练' }, { value: 'some_experience', label: '有一些经验' }, { value: 'experienced', label: '经验较丰富' }]
+const sessionDurationOptions = [20, 30, 45, 60].map(value => ({ value: String(value), label: `约 ${value} 分钟` }))
+function setExperience(value: string): void { plan.preferences.experience_level = value as PlanPreferences['experience_level']; plan.edited = true }
+function setSessionDuration(value: string): void { plan.preferences.session_minutes = Number(value) as PlanPreferences['session_minutes']; plan.edited = true }
 
 function toggleWeekday(day: number): void {
   plan.edited = true
@@ -39,12 +44,23 @@ function toggleEquipment(value: PlanPreferences['equipment'][number]): void {
   plan.edited = true
   if (value === 'bodyweight_only') {
     plan.preferences.equipment = plan.preferences.equipment.includes(value) ? [] : [value]
+    removeIncompatiblePreferredExercises()
     return
   }
   plan.preferences.equipment = plan.preferences.equipment.filter((item) => item !== 'bodyweight_only')
   plan.preferences.equipment = plan.preferences.equipment.includes(value)
     ? plan.preferences.equipment.filter((item) => item !== value)
     : [...plan.preferences.equipment, value]
+  removeIncompatiblePreferredExercises()
+}
+
+function removeIncompatiblePreferredExercises(): void {
+  if (!training.exercises.length) return
+  const selectedEquipment = plan.preferences.equipment
+  plan.preferences.preferred_exercise_ids = plan.preferences.preferred_exercise_ids.filter((id) => {
+    const exercise = training.exercises.find((item) => item.id === id)
+    return Boolean(exercise && exercise.equipment.some((item) => selectedEquipment.includes(item as PlanPreferences['equipment'][number])))
+  })
 }
 
 function changeGoal(value: PlanPreferences['goal']): void {
@@ -83,15 +99,16 @@ function removeExercise(id: number): void {
         <div class="weekday-grid"><label v-for="(day, index) in weekdays" :key="day" class="weekday-option"><input type="checkbox" :checked="plan.preferences.training_weekdays.includes(index + 1)" @change="toggleWeekday(index + 1)" /><span>{{ day }}</span></label></div>
         <p class="weekday-count" aria-live="polite">已选 {{ plan.preferences.training_weekdays.length }} 天</p>
       </fieldset>
-      <label class="field"><span>训练经验</span><select v-model="plan.preferences.experience_level" @change="plan.edited = true"><option value="beginner">刚开始训练</option><option value="some_experience">有一些经验</option><option value="experienced">经验较丰富</option></select></label>
+      <label class="field"><span>训练经验</span><FilterSelect :model-value="plan.preferences.experience_level" :options="experienceOptions" aria-label="训练经验" @update:model-value="setExperience" /></label>
       <fieldset class="form-stack equipment-options"><legend>可用器械（至少选择一项）</legend>
         <label v-for="item in equipmentOptions" :key="item.value" class="check-row"><input type="checkbox" :checked="plan.preferences.equipment.includes(item.value)" @change="toggleEquipment(item.value)" /><span>{{ item.label }}</span></label>
         <p class="fine-print">“仅自重”与其他器械选项互斥；可同时选择多种器械。</p>
       </fieldset>
-      <fieldset class="exercise-preference-field"><legend>偏好动作（可选，最多 12 个）</legend><p class="fine-print">不选择时会按可用器械自动搭配常见动作；选择后力量训练日优先沿用这些动作。</p><div v-if="selectedExercises.length" class="selected-exercise-chips"><button v-for="item in selectedExercises" :key="item.id" type="button" @click="removeExercise(item.id)">{{ item.name }} ×</button></div><button class="button button-quiet" type="button" @click="showExercises = !showExercises">{{ showExercises ? '收起动作库' : '从动作库选择' }}</button><ExerciseLibrary v-if="showExercises" compact selectable @select="addExercise" /></fieldset>
-      <label class="field"><span>单次训练时长</span><select v-model.number="plan.preferences.session_minutes" @change="plan.edited = true"><option :value="20">约 20 分钟</option><option :value="30">约 30 分钟</option><option :value="45">约 45 分钟</option><option :value="60">约 60 分钟</option></select></label>
+      <fieldset class="exercise-preference-field"><legend>偏好动作（可选，最多 12 个）</legend><p class="fine-print">仅显示与上方器械匹配的动作。不选择时会按可用器械自动搭配常见动作；选择后力量训练日优先沿用这些动作。点击查看动作要领。</p><div v-if="selectedExercises.length" class="selected-exercise-chips"><button v-for="item in selectedExercises" :key="item.id" type="button" @click="removeExercise(item.id)">{{ item.name }} ×</button></div><button class="button button-quiet" type="button" @click="showExercises = !showExercises">{{ showExercises ? '收起动作库' : '从动作库选择' }}</button><ExerciseLibrary v-if="showExercises" compact selectable :equipment-filter="plan.preferences.equipment" @select="addExercise" /></fieldset>
+      <label class="field"><span>单次训练时长</span><FilterSelect :model-value="String(plan.preferences.session_minutes)" :options="sessionDurationOptions" aria-label="单次训练时长" @update:model-value="setSessionDuration" /></label>
       <button class="button button-primary" type="submit" :disabled="plan.generating">{{ plan.generating ? '正在生成…' : '生成本周计划 ↗' }}</button>
     </form>
+    <p class="fine-print">生成计划时会将本次训练偏好、用于安全提示的年龄段和候选动作发送给项目配置的通义千问模型；不会发送账号标识或具体身高体重数值。</p>
     <p class="fine-print">生成计划前需填写个人身体档案。年龄会影响恢复提示；身高体重用于后续进展对照。</p>
   </article>
 </template>

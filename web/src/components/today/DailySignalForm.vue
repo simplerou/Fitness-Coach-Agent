@@ -21,7 +21,6 @@ async function submit(): Promise<void> {
     })
     notice.notify('状态已保存。', 'success')
   } catch (error) {
-    if (await safety.handleSafetyGateError(error)) return
     notice.notify(error instanceof Error ? error.message : '请求失败，请稍后重试。', 'error')
   }
 }
@@ -29,8 +28,8 @@ async function submit(): Promise<void> {
 
 <template>
   <article class="panel">
-    <div class="panel-head"><div><p class="eyebrow">CHECK-IN</p><h3>{{ safety.isRestDay ? '今天是计划休息日' : safety.today?.level === 'stop' ? '今天的训练建议已暂停' : safety.today?.level === 'ask' ? '确认身体状态后再记录' : '记录今天的状态' }}</h3></div><span class="step-no">01</span></div>
-    <form v-if="!safety.isRestDay && safety.today?.level !== 'stop' && safety.today?.level !== 'ask'" class="form-stack" @submit.prevent="submit">
+    <div class="panel-head"><div><p class="eyebrow">CHECK-IN</p><h3>{{ safety.isRestDay ? '今天是计划休息日' : '记录今天的状态' }}</h3></div><span class="step-no">01</span></div>
+    <form v-if="!safety.isRestDay" class="form-stack" @submit.prevent="submit">
       <fieldset><legend>主观状态</legend>
         <label class="choice"><input v-model="form.readiness" type="radio" name="readiness" value="good" required /><span><b>状态不错</b><small>精力和平时差不多或更好</small></span></label>
         <label class="choice"><input v-model="form.readiness" type="radio" name="readiness" value="okay" /><span><b>一般</b><small>不确定，或比平时略累</small></span></label>
@@ -43,6 +42,5 @@ async function submit(): Promise<void> {
       <button class="button button-primary" type="submit" :disabled="safety.submittingSignal">{{ safety.submittingSignal ? '正在保存…' : '保存状态' }}</button>
     </form>
     <p v-else-if="safety.isRestDay" class="fine-print">今天是计划休息日，无需填写训练状态。</p>
-    <p v-else class="fine-print">请先完成今天的身体感受确认，再记录训练状态。</p>
   </article>
 </template>

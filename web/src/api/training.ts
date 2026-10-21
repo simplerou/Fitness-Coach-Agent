@@ -14,6 +14,8 @@ export const createSmartTrainingLog = (payload: SmartTrainingLogPayload): Promis
 export const getDetailedTrainingLogs = (): Promise<{ items: DetailedTrainingLog[] }> => request('/api/training/logs')
 export const decideAdvice = (id: number, decision: 'adopted' | 'ignored'): Promise<{ message: string }> =>
   request(`/api/training/advice/${id}`, { method: 'PUT', body: JSON.stringify({ decision }) })
+export const resetAdviceDecision = (id: number): Promise<{ message: string }> =>
+  request(`/api/training/advice/${id}/decision`, { method: 'DELETE' })
 export const getRecoverySummary = (): Promise<RecoverySummary> => request('/api/training/recovery/summary')
 export const previewPlanAdjustment = (weekOf: string): Promise<PlanAdjustment> =>
   request(`/api/training/adjustments/preview?week_of=${encodeURIComponent(weekOf)}`, { method: 'POST' })

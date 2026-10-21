@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { ExerciseDefinition } from '@/api/types'
+import { exerciseNameLabel, muscleLabel } from '@/utils/exerciseLabels'
 
 const props = defineProps<{ exercise: ExerciseDefinition | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -75,16 +76,16 @@ onBeforeUnmount(stopAutoplay)
   <BaseDialog ref="dialog" class="user-dialog exercise-detail-dialog" @close="handleClose">
     <div v-if="exercise" class="dialog-card">
       <div class="user-dialog-top">
-        <div><p class="eyebrow">EXERCISE GUIDE</p><h2>{{ exercise.name }}</h2></div>
+        <div><p class="eyebrow">动作指南</p><h2>{{ exerciseNameLabel(exercise.name) }}</h2></div>
         <button class="dialog-close" type="button" aria-label="关闭动作详情" @click="dialog?.close()">×</button>
       </div>
       <div class="exercise-tags">
-        <span>{{ exercise.category }}</span><span v-for="muscle in exercise.target_muscles" :key="muscle">{{ muscle }}</span>
+        <span>{{ muscleLabel(exercise.category) }}</span><span v-for="muscle in exercise.target_muscles" :key="muscle">{{ muscleLabel(muscle) }}</span>
       </div>
 
       <section class="exercise-media-section">
         <div class="exercise-media-heading">
-          <div><p class="eyebrow">DEMONSTRATION</p><h3>动作示范</h3></div>
+          <div><p class="eyebrow">示范演示</p><h3>动作示范</h3></div>
           <span v-if="!hasVideo && availableImages.length > 1">起始与结束动作自动切换</span>
         </div>
         <video
@@ -101,7 +102,7 @@ onBeforeUnmount(stopAutoplay)
           <div class="exercise-demo-stage">
             <img
               :src="activeImage"
-              :alt="`${exercise.name}${imageIndex === 0 ? '起始' : '结束'}动作示范`"
+              :alt="`${exerciseNameLabel(exercise.name)}${imageIndex === 0 ? '起始' : '结束'}动作示范`"
               loading="eager"
               referrerpolicy="no-referrer"
               @error="markImageFailed(activeImage)"
@@ -138,8 +139,8 @@ onBeforeUnmount(stopAutoplay)
 
       <section><h3>动作要领</h3><ul><li v-for="cue in exercise.cues" :key="cue">{{ cue }}</li></ul></section>
       <section><h3>常见错误与修正</h3><article v-for="item in exercise.common_errors" :key="item.error"><b>{{ item.error }}</b><p>{{ item.correction }}</p></article></section>
-      <div class="exercise-variants"><section><h3>退阶</h3><p>{{ exercise.regressions.join('、') || '暂无' }}</p></section><section><h3>进阶</h3><p>{{ exercise.progressions.join('、') || '暂无' }}</p></section></div>
-      <section><h3>同目标肌群替代动作</h3><p v-for="item in exercise.alternatives" :key="item.name"><b>{{ item.name }}</b> · {{ item.scene }}</p></section>
+      <div class="exercise-variants"><section><h3>退阶</h3><p>{{ exercise.regressions.map(exerciseNameLabel).join('、') || '暂无' }}</p></section><section><h3>进阶</h3><p>{{ exercise.progressions.map(exerciseNameLabel).join('、') || '暂无' }}</p></section></div>
+      <section><h3>同目标肌群替代动作</h3><p v-for="item in exercise.alternatives" :key="item.name"><b>{{ exerciseNameLabel(item.name) }}</b> · {{ item.scene }}</p></section>
       <p class="fine-print">动作应在无痛、可控制的范围内完成。出现关节疼痛、锐痛或肿胀时停止该动作。</p>
     </div>
   </BaseDialog>

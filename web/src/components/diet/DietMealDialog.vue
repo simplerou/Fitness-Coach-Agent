@@ -10,6 +10,7 @@ const notice = useNotice()
 const query = ref('')
 const searchStatus = ref('搜索并选择食物，所选食物会显示在这里。')
 const mealTypes: Array<{ value: DietMealType; label: string }> = [{ value: 'breakfast', label: '早餐' }, { value: 'lunch', label: '午餐' }, { value: 'dinner', label: '晚餐' }, { value: 'snack', label: '加餐' }]
+const mealTypeLabel = computed(() => mealTypes.find((type) => type.value === diet.mealForm.meal_type)?.label ?? '未指定')
 const dialog = ref<InstanceType<typeof BaseDialog> | null>(null)
 const title = computed(() => diet.editingMealId == null ? '记录一餐' : '修改餐食')
 const total = computed(() => diet.selectedTotals.values)
@@ -32,9 +33,7 @@ async function save(): Promise<void> {
   try { notice.notify(await diet.saveMealData(), 'success') }
   catch (error) { notice.notify(error instanceof Error ? error.message : '餐食记录保存失败。', 'error') }
 }
-function setMealType(value: string): void { diet.mealForm.meal_type = value as DietMealType }
-
-defineExpose({ open: (meal?: DietMeal | null) => { diet.openMeal(meal || null); query.value = ''; searchStatus.value = '搜索并选择食物，所选食物会显示在这里。' } })
+defineExpose({ open: (meal?: DietMeal | null, mealType?: DietMealType) => { diet.openMeal(meal || null, mealType); query.value = ''; searchStatus.value = '搜索并选择食物，所选食物会显示在这里。' } })
 </script>
 
 <template>
@@ -42,7 +41,7 @@ defineExpose({ open: (meal?: DietMeal | null) => { diet.openMeal(meal || null); 
     <div class="user-dialog-top"><div><p class="eyebrow">MEAL NOTES</p><h2 id="diet-meal-dialog-title">{{ title }}</h2></div><button class="user-dialog-close" type="button" aria-label="关闭餐食记录" @click="diet.closeMeal">×</button></div>
     <p class="diet-meal-dialog-date">记录日期：<b>{{ diet.selectedDate }}</b></p>
     <form class="form-stack" @submit.prevent="save">
-      <label class="field"><span>餐别</span><select :value="diet.mealForm.meal_type" required @change="setMealType(($event.target as HTMLSelectElement).value)"><option v-for="type in mealTypes" :key="type.value" :value="type.value">{{ type.label }}</option></select></label>
+      <p class="diet-meal-type-lock">餐次：<strong>{{ mealTypeLabel }}</strong></p>
       <p v-if="diet.editingMealId != null" class="fine-print">当前记录：{{ diet.mealForm.description }}{{ diet.mealForm.portion ? ` · ${diet.mealForm.portion}` : '' }}</p>
       <section class="diet-food-picker" aria-label="搜索并选择食物">
         <label class="field"><span>搜索食物</span><input v-model="query" type="search" maxlength="80" placeholder="例如：米饭、鸡蛋" autocomplete="off" @keydown.enter.prevent="search" /></label>

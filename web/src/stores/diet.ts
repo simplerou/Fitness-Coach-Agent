@@ -2,7 +2,6 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { addWater, createDietPlan, deleteMeal, getDietLog, getDietPlanHistory, getDietProfile, getDietTargets, getFoodDetail, saveDietProfile, saveMeal, searchFoods, updateDietDayReview } from '@/api/diet'
 import type { DietFood, DietLogResponse, DietMeal, DietMealPayload, DietMealType, DietPlanData, DietPlanHistoryItem, DietProfile, DietSelectedFood, DietTargetsResponse } from '@/api/types'
-import { useSafetyStore } from '@/stores/safety'
 import { localDateString } from '@/utils/date'
 
 const blankProfile = (): DietProfile => ({ goal: null, activity_level: null, training_type: null, training_time: null, training_end_time: null, dietary_preference: null, allergies: null, allergies_reviewed: false, avoid_foods: null, medical_conditions: null, injuries: null, health_reviewed: false, cooking_access: null, eating_out_per_week: null, budget_note: null, water_target_ml: null })
@@ -55,7 +54,6 @@ function normalizeFood(item: DietFood): DietSelectedFood {
 }
 
 export const useDietStore = defineStore('diet', () => {
-  const safety = useSafetyStore()
   const selectedDate = ref(localDateString())
   const log = ref<DietLogResponse>({ log_date: selectedDate.value, items: [], water_ml: 0, day_complete: false })
   const profile = reactive<DietProfile>(blankProfile())
@@ -163,14 +161,13 @@ export const useDietStore = defineStore('diet', () => {
       mealForm.nutrition_source = null
     }
   }
-  function openMeal(meal: DietMeal | null = null): void {
+  function openMeal(meal: DietMeal | null = null, mealType?: DietMealType): void {
     if (futureDate.value) throw new Error('计划日期还未到，暂时不能记录餐食。')
-    if (selectedDate.value === localDateString() && safety.safetyStatus !== 'clear') throw new Error('请先完成今天的安全筛查，再记录饮食。')
     editingMealId.value = meal?.id ?? null
     selectedFoods.value = []
     foods.value = []
     searchKeyword.value = ''
-    Object.assign(mealForm, { log_date: selectedDate.value, meal_type: meal?.meal_type ?? (['breakfast', 'lunch', 'dinner'].find((type) => !log.value.items.some((item) => item.meal_type === type)) || 'snack'), description: meal?.description ?? '', note: meal?.note ?? null, portion: meal?.portion ?? null, eaten_at: meal?.eaten_at ?? null, calories_kcal: meal?.calories_kcal ?? null, protein_g: meal?.protein_g ?? null, carbs_g: meal?.carbs_g ?? null, fat_g: meal?.fat_g ?? null, nutrition_source: meal?.nutrition_source ?? null })
+    Object.assign(mealForm, { log_date: selectedDate.value, meal_type: meal?.meal_type ?? mealType ?? (['breakfast', 'lunch', 'dinner'].find((type) => !log.value.items.some((item) => item.meal_type === type)) || 'snack'), description: meal?.description ?? '', note: meal?.note ?? null, portion: meal?.portion ?? null, eaten_at: meal?.eaten_at ?? null, calories_kcal: meal?.calories_kcal ?? null, protein_g: meal?.protein_g ?? null, carbs_g: meal?.carbs_g ?? null, fat_g: meal?.fat_g ?? null, nutrition_source: meal?.nutrition_source ?? null })
     mealDialogOpen.value = true
   }
   function closeMeal(): void { mealDialogOpen.value = false; editingMealId.value = null }
@@ -185,7 +182,6 @@ export const useDietStore = defineStore('diet', () => {
   async function removeMeal(mealId: number): Promise<string> { const result = await deleteMeal(mealId); await loadLog(); return result.message }
   async function addWaterIntake(): Promise<string> {
     if (futureDate.value) throw new Error('计划日期还未到，暂时不能记录饮水。')
-    if (selectedDate.value === localDateString() && safety.safetyStatus !== 'clear') throw new Error('请先完成今天的安全筛查，再记录饮水。')
     if (waterInput.value == null) throw new Error('请输入本次饮水量。')
     const result = await addWater(selectedDate.value, waterInput.value)
     waterInput.value = null
@@ -194,7 +190,6 @@ export const useDietStore = defineStore('diet', () => {
   }
   async function markDayComplete(value: boolean): Promise<string> {
     if (futureDate.value) throw new Error('计划日期还未到，暂时不能记录饮食。')
-    if (selectedDate.value === localDateString() && safety.safetyStatus !== 'clear') throw new Error('请先完成今天的安全筛查，再更新饮食记录完整度。')
     const result = await updateDietDayReview(selectedDate.value, value)
     await loadLog()
     return result.message

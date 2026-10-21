@@ -1,43 +1,64 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useShapingStore } from '@/stores/shaping'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import ReportTabs from '@/components/shaping/ReportTabs.vue'
+import ShapeTrendDashboard from '@/components/shaping/ShapeTrendDashboard.vue'
 import MeasurementDialog from '@/components/shaping/MeasurementDialog.vue'
 import CircumferencePanel from '@/components/shaping/CircumferencePanel.vue'
 import CompositionPanel from '@/components/shaping/CompositionPanel.vue'
 import ShapeTargets from '@/components/shaping/ShapeTargets.vue'
 import ShapePhotos from '@/components/shaping/ShapePhotos.vue'
 import ShapeHistory from '@/components/shaping/ShapeHistory.vue'
+import WeakPartPanel from '@/components/shaping/WeakPartPanel.vue'
+import ShapeReportsPanel from '@/components/shaping/ShapeReportsPanel.vue'
+import ReviewView from '@/views/ReviewView.vue'
+import { useShapingStore } from '@/stores/shaping'
 import { SHAPE_LABELS } from '@/constants/shaping'
 import { localDateString } from '@/utils/date'
 
 const shaping = useShapingStore()
+const route = useRoute()
 const router = useRouter()
 const measurement = ref<InstanceType<typeof MeasurementDialog> | null>(null)
-const due = computed(() => shaping.reminders.filter(row => row.due))
-const dueNames = computed(() => due.value.map(row => SHAPE_LABELS[row.metric]).join('、'))
-const nextDue = computed(() => shaping.data?.reminders.map(row => row.next_due_on).filter((date): date is string => date != null).sort()[0])
-async function reload(): Promise<void> { try { await shaping.load() } catch { /* inline error with retry */ } }
-onMounted(reload)
+const tab = computed(() => {
+  const requested = String(route.query.tab || '')
+  if (['trend', 'measurements', 'review'].includes(requested)) return requested
+  if (['measurements', 'photos'].includes(String(route.query.section || ''))) return 'measurements'
+  if (['reports', 'coach'].includes(String(route.query.section || ''))) return 'review'
+  return 'trend'
+})
+const due = computed(() => shaping.reminders.filter((item) => item.due))
+const dueNames = computed(() => due.value.map((item) => SHAPE_LABELS[item.metric]).join('、'))
+async function reload() { try { await shaping.load() } catch { /* 错误在页面内展示 */ } }
+watch(() => route.query.action, (action) => { if (action === 'record') measurement.value?.open(localDateString()) })
+onMounted(async () => { await reload(); if (route.query.action === 'record') measurement.value?.open(localDateString()) })
 </script>
 
 <template>
-  <section class="page active shape-page">
-    <div class="section-heading"><div><p class="eyebrow">SHAPE JOURNEY</p><h2>看见身体的变化</h2></div><button class="button button-primary" :disabled="!shaping.data || shaping.saving" @click="measurement?.open(localDateString())">记录测量</button></div>
-    <article class="shape-expectation"><span class="shape-expectation-icon" aria-hidden="true">↗</span><div><b>给变化一点时间</b><p>变化通常在 4–8 周逐渐显现，个体差异很大，这不是效果承诺。体重、围度、体成分和线条可以不同步，用同条件的记录看趋势。</p></div></article>
-    <div v-if="shaping.error" class="shape-error" role="alert">{{ shaping.error }} <button class="text-button" @click="reload">重新加载</button></div>
-    <p v-if="shaping.loading && !shaping.data" role="status">正在读取塑型记录…</p>
-    <template v-if="shaping.data">
-      <div class="shape-reminder" :class="{ 'is-due': due.length }" role="status">
-        <div><b>{{ due.length ? '到双周测量时间了' : shaping.measurements.length ? '每两周，留下一次可比的记录' : '从第一次测量开始' }}</b><p>{{ due.length ? `${dueNames}已到复测日期。` : nextDue ? `下次围度复测：${nextDue}。未填写的指标可随时补充。` : '先记录围度，之后会按每个部位的最近测量日期，在应用内提醒复测。' }}</p></div>
-        <button class="button button-quiet" :disabled="shaping.saving" @click="measurement?.open(localDateString())">{{ due.length ? '去复测' : '记录围度 / 体成分' }}</button>
-      </div>
-      <CircumferencePanel @record="measurement?.open(localDateString())" />
-      <CompositionPanel @record="measurement?.open(localDateString())" @weight="router.push({ name: 'profile' })" />
-      <ShapeTargets />
-      <ShapePhotos />
-      <ShapeHistory @edit="date => measurement?.open(date)" />
-      <div class="shape-flow-links"><span>让行动与变化连起来</span><button class="text-button" @click="router.push({ name: 'plan' })">查看训练计划 →</button><button class="text-button" @click="router.push({ name: 'diet' })">查看饮食规划 →</button></div>
+  <section class="page active report-workspace">
+    <PageHeader title="效果报告" :breadcrumbs="['报告', tab === 'trend' ? '趋势' : tab === 'measurements' ? '体测' : '周回顾']" description="用同条件下的连续记录观察变化">
+      <template #actions><button v-if="tab === 'measurements'" class="button button-primary" :disabled="shaping.saving" @click="measurement?.open(localDateString())">记录测量</button><button class="button button-quiet" :disabled="shaping.loading" @click="reload">刷新</button></template>
+    </PageHeader>
+    <ReportTabs />
+    <div v-if="shaping.error" class="error-state" role="alert"><span>{{ shaping.error }}</span><button class="button button-quiet" @click="reload">重试</button></div>
+    <div v-else-if="shaping.loading && !shaping.data" class="loading-skeleton report-loading" />
+    <template v-else-if="shaping.data">
+      <template v-if="tab === 'trend'">
+        <article class="expectation-strip"><b>变化通常在 4–8 周逐渐显现</b><span>个体差异很大，这不是效果承诺。体重、围度、体成分和线条可以不同步。</span></article>
+        <ShapeTrendDashboard />
+        <ShapeTargets />
+      </template>
+      <template v-else-if="tab === 'measurements'">
+        <div class="measurement-reminder" :class="{ due: due.length }"><div><b>{{ due.length ? '到双周测量时间了' : '保持相同条件记录' }}</b><span>{{ due.length ? `${dueNames}已到复测日期。` : '每两周记录一次，比每天测量更容易看出趋势。' }}</span></div><button class="button button-quiet" @click="measurement?.open(localDateString())">去测量</button></div>
+        <div class="measurement-grid"><CircumferencePanel @record="measurement?.open(localDateString())" /><CompositionPanel @record="measurement?.open(localDateString())" @weight="router.push({ name: 'profile' })" /></div>
+        <ShapePhotos />
+        <ShapeHistory @edit="(date) => measurement?.open(date)" />
+      </template>
+      <template v-else>
+        <ReviewView embedded />
+        <div class="report-insight-grid"><WeakPartPanel /><ShapeReportsPanel /></div>
+      </template>
     </template>
     <MeasurementDialog ref="measurement" />
   </section>

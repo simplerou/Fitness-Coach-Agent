@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { PHOTO_VIEWS, PHOTO_LABELS } from '@/constants/shaping'
 import { useShapingStore } from '@/stores/shaping'
@@ -7,12 +7,15 @@ import { prepareShapePhoto } from '@/utils/shaping'
 import { localDateString } from '@/utils/date'
 import { useNotice } from '@/composables/useNotice'
 import type { ShapePhotoView } from '@/api/types'
+import FilterSelect from '@/components/ui/FilterSelect.vue'
 const shaping = useShapingStore()
 const notice = useNotice()
 const dialog = ref<InstanceType<typeof BaseDialog> | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 const date = ref(localDateString())
 const view = ref<ShapePhotoView>('front')
+const viewValue = computed({ get: () => view.value, set: (value: string) => { view.value = value as ShapePhotoView } })
+const viewOptions = PHOTO_VIEWS.map(angle => ({ value: angle, label: PHOTO_LABELS[angle] }))
 const preview = ref('')
 const error = ref('')
 const processing = ref(false)
@@ -45,7 +48,7 @@ defineExpose({ open })
   <BaseDialog ref="dialog" class="user-dialog shape-photo-dialog" aria-labelledby="shape-photo-title" @close="reset">
     <div class="user-dialog-top"><div><p class="eyebrow">PHOTO CHECK-IN</p><h2 id="shape-photo-title">三视角照片打卡</h2></div><button class="user-dialog-close" :disabled="shaping.saving" aria-label="关闭照片窗口" @click="dialog?.close()">×</button></div>
     <p class="shape-muted">尽量固定距离、光线、衣着和自然站姿，拍到全身。同一天同一视角再次保存会替换原图，可逐张补齐三个视角。</p>
-    <form class="form-stack" @submit.prevent="save"><div class="field-row"><label class="field"><span>拍摄日期</span><input v-model="date" type="date" :max="localDateString()" required :disabled="shaping.saving" /></label><label class="field"><span>视角</span><select v-model="view" :disabled="shaping.saving"><option v-for="angle in PHOTO_VIEWS" :key="angle" :value="angle">{{ PHOTO_LABELS[angle] }}</option></select></label></div>
+    <form class="form-stack" @submit.prevent="save"><div class="field-row"><label class="field"><span>拍摄日期</span><input v-model="date" type="date" :max="localDateString()" required :disabled="shaping.saving" /></label><label class="field"><span>视角</span><FilterSelect v-model="viewValue" :options="viewOptions" aria-label="视角" :disabled="shaping.saving" /></label></div>
       <label class="field"><span>选择照片（JPG / PNG / WebP）</span><input ref="input" type="file" accept="image/jpeg,image/png,image/webp" :disabled="processing || shaping.saving" @change="choose" /></label>
       <p v-if="processing" role="status">正在处理照片…</p><img v-if="preview" class="shape-upload-preview" :src="preview" :alt="`${PHOTO_LABELS[view]}待保存照片`" />
       <p v-if="shaping.photos.some(photo => photo.recorded_on === date && photo.view === view)" class="shape-warning">这一天已有{{ PHOTO_LABELS[view] }}照片，保存后会替换。</p><p v-if="error" class="shape-error" role="alert">{{ error }}</p>

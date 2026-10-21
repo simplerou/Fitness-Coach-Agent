@@ -4,7 +4,7 @@ from datetime import date, datetime
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..database import Base
+from .base import Base
 
 
 class ExerciseLibraryRecord(Base):
@@ -26,6 +26,28 @@ class ExerciseLibraryRecord(Base):
     media_license: Mapped[str | None] = mapped_column(String(80), nullable=True)
     media_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_seed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ExerciseKnowledgeDocumentRecord(Base):
+    """经审核的外部训练资料摘要与动作库检索文档；不按用户隔离，作为公共知识库。"""
+    __tablename__ = "exercise_knowledge_documents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    exercise_id: Mapped[int | None] = mapped_column(ForeignKey("exercise_library.id", ondelete="SET NULL"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_published_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_retrieved_at: Mapped[date] = mapped_column(Date, nullable=False)
+    content_rights: Mapped[str] = mapped_column(String(80), nullable=False, default="paraphrased_summary")
+    target_muscles: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    equipment: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    review_status: Mapped[str] = mapped_column(String(20), nullable=False, default="approved", index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class TrainingExerciseEntryRecord(Base):

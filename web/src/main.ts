@@ -6,5 +6,10 @@ import './styles/tokens.css'
 import './styles/main.css'
 import './styles/shaping.css'
 import './styles/training-intelligence.css'
+import './styles/home.css'
+import './styles/dashboard-layout.css'
+import './styles/dashboard-components.css'
+import './styles/form-controls.css'
+import './styles/coach-floating.css'
 
 createApp(App).use(createPinia()).use(router).mount('#app')

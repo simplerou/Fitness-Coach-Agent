@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import (
-    Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text,
-    create_engine, func, select, text,
-)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.orm import sessionmaker
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -22,201 +19,18 @@ if not DATABASE_URL:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
-
-class Base(DeclarativeBase):
-    pass
-
+from .models.base import Base
+from .models.user_profile import AccountUserRecord, LocalProfileRecord, BodyProfileRecord, BodyWeightHistoryRecord
+from .models.daily_signal import DailySignalRecord
+from .models.training_log import TrainingLogRecord
+from .models.training_plan import WeeklyPlanRecord, TrainingPreferencesRecord, TrainingSchedulePreferencesRecord
+from .models.safety_hold import LocalSafetyStateRecord
+from .models.diet import DietMealRecord, DietProfileRecord, DietDayReviewRecord, DietPlanSnapshotRecord, DailyWaterRecord
 
 DEFAULT_TRAINING_WEEKDAYS_BY_COUNT = {
     1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 6],
     5: [1, 2, 3, 5, 6], 6: [1, 2, 3, 4, 5, 6],
 }
-
-
-class AccountUserRecord(Base):
-    """账号表；只保存密码散列，不保存原始密码。"""
-
-    __tablename__ = "account_users"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    username: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
-    display_name: Mapped[str] = mapped_column(String(48), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    password_salt: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class DailySignalRecord(Base):
-    __tablename__ = "daily_signals"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
-    signal_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    readiness: Mapped[str] = mapped_column(String(16), nullable=False)
-    sleep_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
-    resting_hr: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-
-class TrainingLogRecord(Base):
-    __tablename__ = "training_logs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, index=True)
-    training_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    completion: Mapped[str] = mapped_column(String(16), nullable=False)
-    rpe: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    skip_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    planned_session_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
-
-
-class DietMealRecord(Base):
-    __tablename__ = "diet_meals"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, index=True)
-    log_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    meal_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    description: Mapped[str] = mapped_column(String(500), nullable=False)
-    note: Mapped[str | None] = mapped_column(String(240), nullable=True)
-    portion: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    eaten_at: Mapped[str | None] = mapped_column(String(5), nullable=True)
-    calories_kcal: Mapped[float | None] = mapped_column(Float, nullable=True)
-    protein_g: Mapped[float | None] = mapped_column(Float, nullable=True)
-    carbs_g: Mapped[float | None] = mapped_column(Float, nullable=True)
-    fat_g: Mapped[float | None] = mapped_column(Float, nullable=True)
-    nutrition_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class DietProfileRecord(Base):
-    __tablename__ = "diet_profiles"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
-    # Legacy demographic and measurement columns stay mapped for old databases; current reads use body_profiles.
-    age_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    biological_sex: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    muscle_mass_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
-    measured_bmr: Mapped[float | None] = mapped_column(Float, nullable=True)
-    measured_tdee: Mapped[float | None] = mapped_column(Float, nullable=True)
-    goal: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    activity_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    training_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    training_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
-    training_end_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
-    dietary_preference: Mapped[str | None] = mapped_column(String(48), nullable=True)
-    allergies: Mapped[str | None] = mapped_column(Text, nullable=True)
-    allergies_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    avoid_foods: Mapped[str | None] = mapped_column(Text, nullable=True)
-    medical_conditions: Mapped[str | None] = mapped_column(Text, nullable=True)
-    injuries: Mapped[str | None] = mapped_column(Text, nullable=True)
-    health_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    cooking_access: Mapped[str | None] = mapped_column(String(24), nullable=True)
-    eating_out_per_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    budget_note: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    water_target_ml: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-
-class DietDayReviewRecord(Base):
-    __tablename__ = "diet_day_reviews"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
-    log_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-
-class DietPlanSnapshotRecord(Base):
-    __tablename__ = "diet_plan_snapshots"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, index=True)
-    generated_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    plan_data: Mapped[dict] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class DailyWaterRecord(Base):
-    __tablename__ = "daily_water_intakes"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
-    log_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    amount_ml: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-
-class LocalProfileRecord(Base):
-    __tablename__ = "local_profiles"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    registered_on: Mapped[date] = mapped_column(Date, nullable=False)
-
-
-class BodyProfileRecord(Base):
-    """一个账号一份当前身体档案；体重历史另存，便于回看变化。"""
-
-    __tablename__ = "body_profiles"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    age_band: Mapped[str] = mapped_column(String(16), nullable=False)
-    age_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    biological_sex: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    height_cm: Mapped[float] = mapped_column(Float, nullable=False)
-    weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
-    target_weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
-    body_fat_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
-    waist_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
-
-class BodyWeightHistoryRecord(Base):
-    __tablename__ = "body_weight_history"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
-    recorded_on: Mapped[date] = mapped_column(Date, primary_key=True)
-    weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
-
-
-class WeeklyPlanRecord(Base):
-    __tablename__ = "weekly_plans"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), primary_key=True)
-    week_start: Mapped[date] = mapped_column(Date, primary_key=True)
-    plan_data: Mapped[dict] = mapped_column(JSON, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
-
-class TrainingPreferencesRecord(Base):
-    __tablename__ = "training_preferences"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    goal: Mapped[str] = mapped_column(String(16), nullable=False)
-    days_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
-    experience_level: Mapped[str] = mapped_column(String(24), nullable=False)
-    equipment: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    session_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
-    preferred_exercise_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
-
-class TrainingSchedulePreferencesRecord(Base):
-    __tablename__ = "training_schedule_preferences"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    weekdays: Mapped[list[int]] = mapped_column(JSON, nullable=False)
-
-
-class LocalSafetyStateRecord(Base):
-    __tablename__ = "local_safety_state"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    hold_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    hold_requires_professional_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    hold_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
 
 TENANT_TABLES = (
     "daily_signals", "training_logs", "local_profiles", "body_profiles",
@@ -224,15 +38,18 @@ TENANT_TABLES = (
     "training_schedule_preferences", "local_safety_state", "diet_meals", "daily_water_intakes",
     "diet_profiles", "diet_day_reviews", "diet_plan_snapshots",
     "training_exercise_entries", "recovery_checkins", "exercise_advice", "plan_adjustments",
+    "shaping_intelligence_preferences", "muscle_group_stats", "weak_part_advice", "qa_log",
+    "diet_day_adjustment", "report_snapshot",
 )
-
 
 def initialize_database() -> None:
     """建表并为旧版单用户表预留账号归属列；实际归属在首个注册时迁移。"""
     # 显式导入扩展模型，确保直接调用初始化函数时也注册全部表。
     from .models import shaping as _shaping_models  # noqa: F401
+    from .models import shaping_intelligence as _shaping_intelligence_models  # noqa: F401
     from .models import training_intelligence as _training_models  # noqa: F401
     from .services.exercise_library import ensure_exercise_seed
+    from .services.exercise_knowledge import ensure_knowledge_seed
 
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
@@ -279,8 +96,8 @@ def initialize_database() -> None:
         ))
     with SessionLocal() as db:
         ensure_exercise_seed(db)
+        ensure_knowledge_seed(db)
         db.commit()
-
 
 def claim_legacy_data_for_first_user(db, user_id: int) -> None:
     """首个注册账号继承旧版单用户数据，并将日期键改为账号复合键。"""
@@ -321,7 +138,6 @@ def claim_legacy_data_for_first_user(db, user_id: int) -> None:
             f"GREATEST(COALESCE((SELECT MAX(id) FROM {table_name}), 1), 1), "
             f"EXISTS(SELECT 1 FROM {table_name}))"
         ))
-
 
 def initialize_user_defaults(db, user_id: int, registered_on: date) -> None:
     """为新账号创建独立起始日期、安全状态和训练偏好。"""

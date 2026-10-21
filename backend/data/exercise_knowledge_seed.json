@@ -1,0 +1,50 @@
+[
+  {
+    "document_key": "acsm-resistance-training-2026",
+    "title": "健康成年人抗阻训练计划的一般原则",
+    "body": "美国运动医学会（ACSM）2026 年面向健康成年人的抗阻训练资料强调，规律训练和持续执行比复杂技巧更重要。训练计划应结合目标调整：力量、肌肉增长和运动表现的训练参数可以不同；没有健身房时，自重和弹力带也可作为训练工具。资料给出每周训练主要肌群至少两天的总体方向，并建议循序渐进。每周约 10 组/肌群可作为增肌训练量的研究参考之一，不是适用于所有人的固定处方；实际安排还要结合训练经验、恢复和可持续性。",
+    "source_name": "American College of Sports Medicine (ACSM)",
+    "source_url": "https://acsm.org/effective-resistance-training-program-infographic/",
+    "source_published_at": "2026-03-17",
+    "content_rights": "paraphrased_summary_link_only",
+    "target_muscles": ["全身"],
+    "equipment": ["自重", "弹力带", "健身房器械"],
+    "tags": ["训练计划", "抗阻训练", "增肌", "训练频率", "训练量", "健康成年人"]
+  },
+  {
+    "document_key": "hhs-adult-activity-guidelines",
+    "title": "美国成人身体活动指南概要",
+    "body": "美国卫生与公众服务部的身体活动指南概要指出，成年人每周可安排 150 至 300 分钟中等强度有氧活动，并至少两天进行肌肉强化活动。指南是总体健康活动参考，不是个体化健身处方，也不代表每个人都应立即达到上限。长期不活动的人可以从少量活动开始，逐步增加。用于训练安排问答时，应把这些数值作为公共健康基线，并结合用户实际训练目标和身体状况说明。",
+    "source_name": "U.S. Department of Health and Human Services, ODPHP",
+    "source_url": "https://odphp.health.gov/our-work/nutrition-physical-activity/physical-activity-guidelines/current-guidelines/top-10-things-know",
+    "source_published_at": "2025-11-19",
+    "content_rights": "paraphrased_summary_link_only",
+    "target_muscles": ["全身"],
+    "equipment": ["自重", "弹力带", "健身房器械"],
+    "tags": ["身体活动", "训练频率", "有氧", "肌力", "入门"]
+  },
+  {
+    "document_key": "medlineplus-exercise-safety",
+    "title": "训练安全与渐进调整",
+    "body": "MedlinePlus 的运动安全资料将热身不足、动作姿势不当、训练间缺少休息、过快增加训练负荷以及器械使用不当列为常见受伤相关因素。新动作可以先学习基本姿势；训练变量宜逐步调整，避免同时增加训练天数、时长和强度。出现运动疼痛时应停止相关活动；持续不缓解的肌肉或关节疼痛应联系专业医疗人员。本摘要用于一般训练安全提醒，不用于诊断或康复处方。",
+    "source_name": "MedlinePlus, U.S. National Library of Medicine",
+    "source_url": "https://medlineplus.gov/ency/patientinstructions/000859.htm",
+    "source_published_at": "2024-09-15",
+    "content_rights": "paraphrased_summary_link_only",
+    "target_muscles": ["全身"],
+    "equipment": [],
+    "tags": ["安全", "热身", "动作规范", "训练负荷", "休息", "疼痛"]
+  },
+  {
+    "document_key": "medlineplus-exercise-amount",
+    "title": "成人活动量与力量训练入门参考",
+    "body": "MedlinePlus 汇总的成人活动量建议包括每周有氧活动和每周至少两天力量活动，并建议力量活动覆盖腿、髋、背、胸、腹、肩和手臂等主要部位。页面提到每个动作可从 8 至 12 次重复开始，并随能力逐步增加轮数。该范围是一般入门参考，不应覆盖具体动作库中的动作建议，也不适用于所有训练目标、年龄或健康状况。长期不活动者可慢慢开始；特殊健康需要应先咨询专业人士。",
+    "source_name": "MedlinePlus / National Institutes of Health",
+    "source_url": "https://medlineplus.gov/howmuchexercisedoineed.html",
+    "source_published_at": null,
+    "content_rights": "paraphrased_summary_link_only",
+    "target_muscles": ["全身", "腿", "髋", "背", "胸", "腹", "肩", "手臂"],
+    "equipment": ["自重", "弹力带", "健身房器械"],
+    "tags": ["入门", "重复次数", "训练频率", "主要肌群"]
+  }
+]

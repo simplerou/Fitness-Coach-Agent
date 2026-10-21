@@ -4,7 +4,7 @@ from datetime import date, datetime
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..database import Base
+from .base import Base
 
 
 class ShapeMeasurementRecord(Base):

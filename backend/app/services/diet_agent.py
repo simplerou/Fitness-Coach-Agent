@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class MealAdvice(BaseModel):
@@ -76,6 +79,18 @@ def _forbidden_terms(input_data: dict[str, Any]) -> list[str]:
     return sorted(terms)
 
 
+def _contains_forbidden_food(term: str, example: str) -> bool:
+    """仅在实际餐食示例中拦截禁忌食材；明确的排除或替代表达不算摄入建议。"""
+    normalized_example = re.sub(r"\s+", "", example).casefold()
+    normalized_term = re.sub(r"\s+", "", term).casefold()
+    for match in re.finditer(re.escape(normalized_term), normalized_example):
+        preceding = normalized_example[max(0, match.start() - 12):match.start()]
+        if re.search(r"(?:不含|无添加|不添加|不加|不放|不使用|不用|不要|避免|避开|忌用|不食用|不摄入|不要添加|替换为|替换成|替换掉|代替|替代|换成|改成|改用|去掉|剔除|排除)$", preceding):
+            continue
+        return True
+    return False
+
+
 def generate_diet_advice(input_data: dict[str, Any]) -> dict[str, Any]:
     """运行校验 → 单次结构化生成 → 约束检查的 LangGraph 工作流。"""
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
@@ -91,7 +106,7 @@ def generate_diet_advice(input_data: dict[str, Any]) -> dict[str, Any]:
             api_key=api_key,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             temperature=0.2,
-            timeout=45,
+            timeout=max(30, int(os.getenv("DIET_AGENT_TIMEOUT_SECONDS", "120"))),
             max_retries=1,
         ).with_structured_output(DietAdvice, method="function_calling")
 
@@ -115,18 +130,13 @@ def generate_diet_advice(input_data: dict[str, Any]) -> dict[str, Any]:
 
         def check_output(state: DietAgentState) -> dict[str, Any]:
             advice = state["advice"]
-            text = " ".join([
-                advice.overview,
-                advice.change_summary,
-                *advice.diagnosis,
-                *(item.example for item in advice.food_examples),
-                advice.habit_to_keep,
-                advice.priority_adjustment,
-                *advice.training_timing_advice,
-            ]).casefold()
-            conflicts = [term for term in _forbidden_terms(state["input_data"]) if term in text]
+            examples = [item.example for item in advice.food_examples]
+            conflicts = [
+                term for term in _forbidden_terms(state["input_data"])
+                if any(_contains_forbidden_food(term, example) for example in examples)
+            ]
             if conflicts:
-                raise ValueError("AI 建议包含档案中标记的过敏源或忌口。")
+                raise ValueError("AI 餐食示例包含档案中标记的过敏源或忌口。")
             return {}
 
         workflow = StateGraph(DietAgentState)
@@ -144,4 +154,9 @@ def generate_diet_advice(input_data: dict[str, Any]) -> dict[str, Any]:
     except ImportError as exc:
         raise DietAgentConfigurationError("AI Agent 依赖尚未安装，请在项目目录运行 pip install -r backend/requirements.txt 后重启后端。") from exc
     except Exception as exc:
+        root_cause = exc
+        while root_cause.__cause__ is not None:
+            root_cause = root_cause.__cause__
+        safe_detail = re.sub(r"sk-[A-Za-z0-9._-]{8,}", "[已隐藏密钥]", str(root_cause))
+        logger.error("饮食 AI 生成失败（%s）：%s", type(root_cause).__name__, safe_detail)
         raise DietAgentGenerationError("AI 饮食规划暂时无法生成，请稍后重试；本次未保存规划快照。") from exc

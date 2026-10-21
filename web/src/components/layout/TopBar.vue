@@ -1,30 +1,88 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useNotice } from '@/composables/useNotice'
 import AccountDialog from '@/components/account/AccountDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import ProfileView from '@/views/ProfileView.vue'
+import { useProfileWindow } from '@/composables/useProfileWindow'
+import NavIcon from './NavIcon.vue'
 
+defineEmits<{ menu: []; search: [] }>()
 const auth = useAuthStore()
+const route = useRoute()
+const notice = useNotice()
+const profileWindow = useProfileWindow()
 const account = ref<InstanceType<typeof AccountDialog> | null>(null)
+const profileDialog = ref<InstanceType<typeof BaseDialog> | null>(null)
+const profileContentMounted = ref(false)
 const avatar = ref('')
+const profileMenuOpen = ref(false)
+let closeTimer: number | null = null
+const labels: Record<string, { title: string; parent?: string }> = {
+  today: { title: '概览' }, plan: { title: '训练', parent: '周计划' }, log: { title: '训练', parent: '训练记录' },
+  diet: { title: '饮食' }, shaping: { title: '报告', parent: '趋势与体测' }, review: { title: '报告', parent: '周回顾' },
+  library: { title: '动作库' }, profile: { title: '设置', parent: '身体档案' },
+}
+const page = computed(() => labels[String(route.name)] || { title: '青禾训练助理' })
+const dateLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())
 watch(() => auth.user?.id, (id) => {
-  try { avatar.value = id ? localStorage.getItem(`fitnessCoachAvatar:${id}`) || '' : '' }
-  catch { avatar.value = '' }
+  try { avatar.value = id ? localStorage.getItem(`fitnessCoachAvatar:${id}`) || '' : '' } catch { avatar.value = '' }
 }, { immediate: true })
-function openAccount(): void { account.value?.open() }
+watch(profileWindow.open, async (isOpen) => {
+  if (!isOpen) { profileDialog.value?.close(); return }
+  profileContentMounted.value = true
+  await nextTick()
+  profileDialog.value?.open()
+}, { immediate: true })
+function showProfileMenu(): void {
+  if (closeTimer !== null) window.clearTimeout(closeTimer)
+  profileMenuOpen.value = true
+}
+function hideProfileMenu(): void {
+  if (closeTimer !== null) window.clearTimeout(closeTimer)
+  closeTimer = window.setTimeout(() => { profileMenuOpen.value = false }, 140)
+}
+function openUserData(): void { profileMenuOpen.value = false; void account.value?.open() }
+async function openProfile(): Promise<void> {
+  profileMenuOpen.value = false
+  profileWindow.openProfileWindow()
+}
+async function logout(): Promise<void> {
+  profileMenuOpen.value = false
+  try { await auth.logout() }
+  catch (error) { notice.notify(error instanceof Error ? error.message : '退出登录失败。', 'error') }
+}
+onBeforeUnmount(() => { if (closeTimer !== null) window.clearTimeout(closeTimer) })
 </script>
 
 <template>
-  <header class="topbar">
-    <a class="brand" href="#/today" aria-label="青禾训练助理首页">
-      <span class="brand-mark">禾</span>
-      <span><strong>青禾</strong><small>训练助理 · V1.9</small></span>
-    </a>
-    <div class="account-actions">
-      <button v-if="auth.isAuthenticated" class="user-menu-button" type="button" aria-label="打开用户信息" aria-haspopup="dialog" aria-controls="account-dialog" @click="openAccount">
-        <span class="user-menu-avatar" :class="{ 'has-avatar-image': avatar }" aria-hidden="true"><img v-if="avatar" :src="avatar" alt="" /><template v-else>禾</template></span>
-      </button>
-      <span class="local-badge"><i></i> 本机账号演示</span>
+  <header class="dashboard-topbar">
+    <div class="topbar-title">
+      <button class="mobile-menu" aria-label="打开导航" @click="$emit('menu')"><NavIcon name="menu" /></button>
+      <div><small>青禾训练助理 / {{ page.parent || page.title }}</small><h1>{{ page.title }}</h1></div>
+    </div>
+    <div class="topbar-actions">
+      <span class="topbar-date">{{ dateLabel }}</span>
+      <button class="topbar-search" @click="$emit('search')"><NavIcon name="search" /><span>搜索动作</span><kbd>Ctrl K</kbd></button>
+      <div v-if="auth.isAuthenticated" class="topbar-profile-wrap" @pointerenter="showProfileMenu" @pointerleave="hideProfileMenu" @focusin="showProfileMenu" @focusout="hideProfileMenu" @keydown.escape="profileMenuOpen = false">
+        <button class="user-menu-button topbar-profile-entry" type="button" aria-label="打开用户菜单" aria-haspopup="menu" :aria-expanded="profileMenuOpen" @click="profileMenuOpen = !profileMenuOpen">
+          <span class="user-menu-avatar" :class="{ 'has-avatar-image': avatar }"><img v-if="avatar" :src="avatar" alt="" /><template v-else>{{ (auth.user?.display_name || auth.user?.username || '禾').slice(0, 1) }}</template></span>
+          <span class="user-menu-text"><b>{{ auth.user?.display_name || auth.user?.username || '我的账号' }}</b></span>
+          <svg class="topbar-profile-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4" /></svg>
+        </button>
+        <div v-if="profileMenuOpen" class="topbar-profile-menu" role="menu">
+          <button type="button" role="menuitem" @click="openUserData"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span><b>用户数据</b><small>体重、目标与身体变化</small></span></button>
+          <button type="button" role="menuitem" @click="openProfile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.8-1L14.4 3h-4L10 6a8 8 0 0 0-1.8 1L5.8 6 3.8 9.5 6 11a7 7 0 0 0 0 2l-2.2 1.5 2 3.5 2.4-1a8 8 0 0 0 1.8 1l.4 3h4l.4-3a8 8 0 0 0 1.8-1l2.4 1 2-3.5L19 13a7 7 0 0 0 .1-1Z"/></svg><span><b>档案与设计</b><small>管理身体档案和偏好</small></span></button>
+          <button class="profile-menu-logout" type="button" role="menuitem" @click="logout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10"/></svg><span><b>退出登录</b><small>结束当前账号会话</small></span></button>
+        </div>
+      </div>
     </div>
     <AccountDialog ref="account" @avatar-saved="avatar = $event" />
+    <BaseDialog ref="profileDialog" class="user-dialog profile-settings-dialog" aria-labelledby="profile-settings-title" @close="profileWindow.closeProfileWindow()">
+      <div class="user-dialog-top profile-settings-dialog-head"><div><p class="eyebrow">档案与设计</p><h2 id="profile-settings-title">个人身体档案</h2></div><button class="user-dialog-close" type="button" aria-label="关闭档案与设计" @click="profileDialog?.close()">×</button></div>
+      <ProfileView v-if="profileContentMounted" embedded @close="profileWindow.closeProfileWindow()" />
+    </BaseDialog>
   </header>
 </template>

@@ -1,0 +1,41 @@
+.log-plan-context{margin:-8px 0 3px;color:#718079;font-size:11px;line-height:1.6}.review-guidance{margin:0 0 15px;padding:15px 18px;border-left:4px solid #7ca487;background:#f7faf6}.review-guidance>b{font-size:12px}.review-guidance>p{margin:6px 0 0;color:#6f7d74;font-size:11px;line-height:1.7}.review-guidance .review-data-context{color:#859188}.review-apply{margin-top:11px}.review-apply-note{margin-left:10px;color:#7b887f;font-size:10px}.review-day-head{align-items:flex-start;gap:8px}.review-planned-label{color:#64816c;font-size:10px;font-weight:550;text-align:right}
+
+.user-menu-button{justify-content:center;padding:0;border:0;border-radius:12px;background:transparent;box-shadow:none}.user-menu-button:hover{border-color:transparent;background:transparent}.user-menu-avatar{width:40px;height:40px;border-radius:12px}
+
+
+/* 饮食记录页：突出可读性，饮水统计不显示目标刻度。 */
+.diet-intro{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px;background:#f8faf6}
+.diet-intro>p{max-width:680px;margin:0;color:#66766b;font-size:12px;line-height:1.8}
+.diet-intro .field{width:min(230px,40%);margin:0}
+.diet-layout{margin-bottom:16px}
+.water-total-card{display:flex;align-items:center;justify-content:space-between;margin:0 0 17px;padding:16px;border-radius:9px;background:#f1f5ef;color:#718079;font-size:12px}
+.water-total-card strong{color:var(--green);font-size:25px;font-variant-numeric:tabular-nums}
+.water-total-card small{font-size:11px;font-weight:500}
+.diet-meal-list{display:grid}
+.diet-meal-entry{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;padding:15px 0;border-bottom:1px solid #edf0ec}
+.diet-meal-entry>div{display:grid;gap:7px}
+.diet-meal-type{color:#66826c;font-size:10px;font-weight:700}
+.diet-meal-entry b{font-size:13px;font-weight:550;white-space:pre-wrap;overflow-wrap:anywhere}
+.diet-meal-entry p{margin:0;color:#879189;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere}
+.diet-delete-button{flex:0 0 auto;color:#a75d50}
+@media(max-width:760px){.diet-intro{align-items:stretch;flex-direction:column;gap:13px}.diet-intro .field{width:100%}}
+
+/* 个性化饮食规划：表单保持分组，数据不足与特殊情况单独提示。 */
+.diet-profile-panel{margin-bottom:16px}
+.diet-profile-panel>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none}
+.diet-profile-panel>summary::-webkit-details-marker{display:none}
+.diet-profile-panel>summary span:first-child{display:grid;gap:5px}
+.diet-profile-panel>summary b{font-size:14px}
+.diet-profile-panel>summary small{color:#879189;font-size:11px}
+.diet-profile-form{margin-top:20px;padding-top:18px;border-top:1px solid #edf0ec}
+.diet-profile-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.diet-inline-inputs{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.diet-inline-inputs input{width:100%;min-width:0;min-height:41px;padding:10px 11px;border:1px solid #dfe6df;border-radius:7px;font:inherit;font-size:12px}
+.diet-nutrient-fields{grid-template-columns:repeat(4,minmax(0,1fr))}
+.diet-complete-row{display:flex;align-items:flex-start;gap:9px;margin-bottom:14px;padding:11px 12px;border-radius:8px;background:#f4f7f1;color:#617067;font-size:11px;line-height:1.6}
+.diet-complete-row input{margin:2px 0 0;accent-color:var(--green)}
+.diet-plan-state,.diet-analysis-block{padding:15px 0;border-bottom:1px solid #edf0ec}
+.diet-plan-state h4,.diet-analysis-block h4,.diet-target-card h4{margin:0 0 8px;font-size:14px}
+.diet-plan-state p,.diet-analysis-block p{margin:6px 0;color:#6e7c72;font-size:11px;line-height:1.75}
+.diet-plan-state ul,.diet-analysis-block ul,.diet-warning ul{margin:7px 0;padding-left:19px;color:#6e7c72;font-size:11px;line-height:1.8}
+.diet-plan-result{display:grid;gap:4px}

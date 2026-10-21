@@ -1,0 +1,7 @@
+<script setup lang="ts">
+import { computed } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import NavIcon from './NavIcon.vue'
+defineProps<{ open:boolean }>(); const emit=defineEmits<{close:[]}>(); const route=useRoute(); const router=useRouter()
+const items=[{key:'today',label:'概览',icon:'overview',route:'today'},{key:'training',label:'训练',icon:'training',route:'plan'},{key:'diet',label:'饮食',icon:'diet',route:'diet'},{key:'report',label:'报告',icon:'report',route:'shaping'},{key:'library',label:'动作库',icon:'library',route:'library'}] as const
+const active=computed(()=>route.name==='log'?'training':route.name==='review'?'report':String(route.name)); function go(name:string){void router.push({name});emit('close')}
+</script>
+<template><aside class="app-sidebar" :class="{open}" aria-label="主导航"><div class="sidebar-brand"><span class="brand-mark">禾</span><span><strong>青禾</strong><small>训练助理</small></span><button class="sidebar-close" aria-label="关闭导航" @click="emit('close')"><NavIcon name="close"/></button></div><nav class="sidebar-nav"><button v-for="item in items" :key="item.key" :class="{active:active===item.key}" :aria-current="active===item.key?'page':undefined" :title="item.label" @click="go(item.route)"><NavIcon :name="item.icon"/><span>{{item.label}}</span></button></nav><div class="sidebar-bottom"><p>本机演示 · 不构成医疗建议</p></div></aside><button v-if="open" class="sidebar-backdrop" aria-label="关闭导航" @click="emit('close')"></button></template>

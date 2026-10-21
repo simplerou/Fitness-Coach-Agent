@@ -2,15 +2,14 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDietStore } from '@/stores/diet'
-import { useSafetyStore } from '@/stores/safety'
+import { useShapingIntelligenceStore } from '@/stores/shapingIntelligence'
 import { useNotice } from '@/composables/useNotice'
 import type { DietMeal } from '@/api/types'
-import { localDateString } from '@/utils/date'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DietMealDialog from '@/components/diet/DietMealDialog.vue'
 
 const diet = useDietStore()
-const safety = useSafetyStore()
+const intelligence = useShapingIntelligenceStore()
 const notice = useNotice()
 const router = useRouter()
 const mealDialog = ref<InstanceType<typeof DietMealDialog> | null>(null)
@@ -26,7 +25,12 @@ const macroItems = computed(() => [
   { key: 'protein_g' as const, title: '蛋白质', label: 'diet-protein', color: '#27bf8a' },
   { key: 'fat_g' as const, title: '脂肪', label: 'diet-fat', color: '#6188fa' },
 ])
-const calorieTarget = computed(() => diet.targets?.status === 'ready' ? diet.targets.target?.calories_kcal ?? null : null)
+const effectiveTarget = computed(() => {
+  const adjusted = intelligence.dietAdjustment
+  if (adjusted?.date === diet.selectedDate && adjusted.status === 'adopted' && adjusted.suggestion) return adjusted.suggestion
+  return diet.targets?.status === 'ready' ? diet.targets.target ?? null : null
+})
+const calorieTarget = computed(() => effectiveTarget.value?.calories_kcal ?? null)
 const calorieProgress = computed(() => calorieTarget.value ? Math.min(100, calories.value.value / calorieTarget.value * 100) : 0)
 const calorieStyle = computed(() => ({ '--diet-progress': `${calorieProgress.value}%` }))
 const waterStatus = computed(() => diet.waterTarget ? '个人参考目标' : '尚未设置饮水参考目标')
@@ -61,12 +65,12 @@ async function toggleComplete(event: Event): Promise<void> {
 }
 function barWidth(key: 'carbs_g' | 'protein_g' | 'fat_g'): string {
   const amount = diet.sums[key]
-  const goal = diet.targets?.target?.[key] || 0
+  const goal = effectiveTarget.value?.[key] || 0
   return amount.count && goal ? `${Math.min(100, amount.value / goal * 100)}%` : '0%'
 }
 function macroStatus(key: 'carbs_g' | 'protein_g' | 'fat_g'): string {
   const amount = diet.sums[key]
-  const goal = diet.targets?.target?.[key] || 0
+  const goal = effectiveTarget.value?.[key] || 0
   return amount.count ? goal ? amount.value >= goal ? '已达目标' : `还差 ${(goal - amount.value).toFixed(1)}g` : `已记录 ${amount.value.toFixed(1)}g` : '未记录'
 }
 </script>
@@ -80,7 +84,7 @@ function macroStatus(key: 'carbs_g' | 'protein_g' | 'fat_g'): string {
       <div class="diet-intake-status"><span>碳水 <b>{{ macroStatus('carbs_g') }}</b></span><i></i><span>蛋白质 <b>{{ macroStatus('protein_g') }}</b></span><i></i><span>脂肪 <b>{{ macroStatus('fat_g') }}</b></span></div>
     </article>
     <article class="panel diet-insight-card"><p class="eyebrow">DAILY INSIGHT</p><div class="diet-insight-content"><div class="diet-insight-meal"><h3>{{ intakeTitle }}</h3><p>{{ intakeCopy }}</p><button class="button button-primary" type="button" @click="openMeal()">{{ intakeAction }}</button></div>
-          <div class="diet-water-quick"><div class="diet-water-quick-total"><span>饮水累计</span><strong>{{ diet.futureDate ? '—' : diet.log.water_ml }} <small>毫升</small></strong></div><div class="diet-water-target-line"><span>{{ waterStatus }}</span><span>{{ diet.waterTarget ? `${diet.waterTarget} 毫升/日` : '仅记录' }}</span></div><div class="diet-progress-track diet-water-progress"><i :style="{ width: `${diet.waterProgress}%` }"></i></div><form class="diet-water-quick-form" @submit.prevent="addWater"><label class="field"><span>本次饮水（毫升）</span><input v-model.number="diet.waterInput" type="number" min="50" max="3000" step="50" required placeholder="例如 250" /></label><button class="button button-primary" type="submit" :disabled="diet.futureDate || (diet.selectedDate === localDateString() && safety.safetyStatus !== 'clear')">记录饮水</button></form><p>仅统计你主动记录的饮水量。</p></div>
+          <div class="diet-water-quick"><div class="diet-water-quick-total"><span>饮水累计</span><strong>{{ diet.futureDate ? '—' : diet.log.water_ml }} <small>毫升</small></strong></div><div class="diet-water-target-line"><span>{{ waterStatus }}</span><span>{{ diet.waterTarget ? `${diet.waterTarget} 毫升/日` : '仅记录' }}</span></div><div class="diet-progress-track diet-water-progress"><i :style="{ width: `${diet.waterProgress}%` }"></i></div><form class="diet-water-quick-form" @submit.prevent="addWater"><label class="field"><span>本次饮水（毫升）</span><input v-model.number="diet.waterInput" type="number" min="50" max="3000" step="50" required placeholder="例如 250" /></label><button class="button button-primary" type="submit" :disabled="diet.futureDate">记录饮水</button></form><p>仅统计你主动记录的饮水量。</p></div>
     </div></article>
   </div>
   <article class="panel diet-meals-panel"><div class="panel-head"><div><p class="eyebrow">TODAY'S MEALS</p><h3>当天餐食</h3></div><button class="text-button" type="button" :disabled="diet.loading" @click="diet.loadLog">刷新</button></div>
@@ -90,8 +94,8 @@ function macroStatus(key: 'carbs_g' | 'protein_g' | 'fat_g'): string {
   </article>
   <div class="diet-flow-heading"><p class="eyebrow">STEP 03 · REVIEW</p><h3>对照目标，回顾营养与饮水</h3><p>查看餐食营养目标和个人饮水参考值的记录情况；积累一段时间的数据后，可回到上方重新生成调整建议。</p></div>
   <article class="panel diet-nutrition-card"><div class="diet-card-heading"><span class="diet-heading-icon">◒</span><h3>营养成分</h3><span class="diet-date-note">已填写营养值</span></div>
-    <div v-if="diet.targets?.status !== 'ready'" class="diet-target-notice" role="status" aria-live="polite"><span>{{ diet.targets?.message || '正在读取个性化目标…' }} {{ diet.targets?.missing?.length ? `还需补充：${diet.targets.missing.join('、')}。` : '' }}</span><button class="text-button" type="button" @click="router.push({ name: 'profile' })">去补充档案</button></div><p v-else class="diet-target-basis">每日能量参考目标：{{ diet.targets.target?.calories_kcal }} kcal。依据：{{ diet.targets.summary?.goal }}；BMR {{ diet.targets.summary?.bmr_kcal }} kcal（{{ diet.targets.summary?.bmr_source }}），TDEE {{ diet.targets.summary?.tdee_kcal }} kcal（{{ diet.targets.summary?.tdee_source }}）。{{ diet.targets.target?.basis }} 这是估算起点，实际需要会因个体差异而变化。</p>
-    <div class="diet-macro-layout"><div class="diet-macro-list"><div v-for="macro in macroItems" :key="macro.key" class="diet-macro-row"><div><span>{{ macro.title }}</span><strong><b>{{ diet.futureDate || !diet.sums[macro.key].count ? '未记录' : diet.sums[macro.key].value.toFixed(1) }}</b><small>{{ diet.targets?.target ? `/ ${diet.targets.target[macro.key].toFixed(1)} g` : '/ 完善档案后显示' }}</small></strong></div><div class="diet-progress-track"><i :style="{ width: barWidth(macro.key) }"></i></div><small>{{ macroStatus(macro.key) }}</small></div></div><div class="diet-macro-chart" :style="macroChartStyle" aria-label="已记录三大营养素构成"><span>{{ [diet.sums.carbs_g.count, diet.sums.protein_g.count, diet.sums.fat_g.count].every(Boolean) ? '克数换算' : diet.meals.length ? '数据未齐' : '暂无数据' }}</span></div></div>
+    <div v-if="diet.targets?.status !== 'ready'" class="diet-target-notice" role="status" aria-live="polite"><span>{{ diet.targets?.message || '正在读取个性化目标…' }} {{ diet.targets?.missing?.length ? `还需补充：${diet.targets.missing.join('、')}。` : '' }}</span><button class="text-button" type="button" @click="router.push({ name: 'profile' })">去补充档案</button></div><p v-else class="diet-target-basis">{{ intelligence.dietAdjustment?.date === diet.selectedDate && intelligence.dietAdjustment.status === 'adopted' ? '当前显示已采纳的当天训练联动目标。' : '当前显示基础每日目标。' }} 能量参考目标：{{ effectiveTarget?.calories_kcal }} kcal。依据：{{ diet.targets.summary?.goal }}；BMR {{ diet.targets.summary?.bmr_kcal }} kcal（{{ diet.targets.summary?.bmr_source }}），TDEE {{ diet.targets.summary?.tdee_kcal }} kcal（{{ diet.targets.summary?.tdee_source }}）。这是估算起点，实际需要会因个体差异而变化。</p>
+    <div class="diet-macro-layout"><div class="diet-macro-list"><div v-for="macro in macroItems" :key="macro.key" class="diet-macro-row"><div><span>{{ macro.title }}</span><strong><b>{{ diet.futureDate || !diet.sums[macro.key].count ? '未记录' : diet.sums[macro.key].value.toFixed(1) }}</b><small>{{ effectiveTarget ? `/ ${effectiveTarget[macro.key].toFixed(1)} g` : '/ 完善档案后显示' }}</small></strong></div><div class="diet-progress-track"><i :style="{ width: barWidth(macro.key) }"></i></div><small>{{ macroStatus(macro.key) }}</small></div></div><div class="diet-macro-chart" :style="macroChartStyle" aria-label="已记录三大营养素构成"><span>{{ [diet.sums.carbs_g.count, diet.sums.protein_g.count, diet.sums.fat_g.count].every(Boolean) ? '克数换算' : diet.meals.length ? '数据未齐' : '暂无数据' }}</span></div></div>
     <p class="diet-data-note">仅统计已填写值；碳水 {{ diet.sums.carbs_g.count }}/{{ diet.meals.length }} 餐、蛋白质 {{ diet.sums.protein_g.count }}/{{ diet.meals.length }} 餐、脂肪 {{ diet.sums.fat_g.count }}/{{ diet.meals.length }} 餐有数据。</p>
     <div class="diet-hydration-review"><div><span class="eyebrow">HYDRATION REVIEW</span><strong>{{ diet.futureDate || !diet.log.water_ml ? '尚无饮水记录' : `${diet.log.water_ml} 毫升` }}</strong></div><p>{{ diet.targets?.hydration?.note || '饮水记录和营养摄入使用同一日期；未记录不代表没有饮水。' }}</p></div>
   </article>

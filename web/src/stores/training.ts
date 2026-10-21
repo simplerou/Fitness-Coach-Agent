@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { decideAdvice, getDetailedTrainingLogs, getExercises, getRecoverySummary } from '@/api/training'
+import { decideAdvice, getDetailedTrainingLogs, getExercises, getRecoverySummary, resetAdviceDecision } from '@/api/training'
 import type { DetailedTrainingLog, ExerciseDefinition, RecoverySummary } from '@/api/types'
 
 export const useTrainingStore = defineStore('training', () => {
@@ -23,5 +23,11 @@ export const useTrainingStore = defineStore('training', () => {
     if (advice) advice.status = decision
     return result.message
   }
-  return { exercises, logs, recovery, loading, loadExercises, load, resolveAdvice }
+  async function undoAdvice(id: number): Promise<string> {
+    const result = await resetAdviceDecision(id)
+    const advice = logs.value.flatMap((row) => row.advice).find((row) => row.id === id)
+    if (advice) advice.status = 'pending'
+    return result.message
+  }
+  return { exercises, logs, recovery, loading, loadExercises, load, resolveAdvice, undoAdvice }
 })

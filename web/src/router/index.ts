@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { useProfileWindow } from '@/composables/useProfileWindow'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -11,8 +12,17 @@ const router = createRouter({
     { path: '/diet', name: 'diet', component: () => import('@/views/DietView.vue') },
     { path: '/shaping', name: 'shaping', component: () => import('@/views/ShapingView.vue') },
     { path: '/review', name: 'review', component: () => import('@/views/ReviewView.vue') },
+    { path: '/library', name: 'library', component: () => import('@/views/LibraryView.vue') },
   ],
   scrollBehavior: () => ({ top: 0 }),
+})
+
+// 身体档案始终通过全局档案窗口打开；回到来源路由，避免渲染成长页面。
+router.beforeEach((to, from) => {
+  if (to.name !== 'profile') return true
+  useProfileWindow().openProfileWindow()
+  if (from.name && from.name !== 'profile') return { path: from.fullPath, replace: true }
+  return { name: 'today', replace: true }
 })
 
 export default router

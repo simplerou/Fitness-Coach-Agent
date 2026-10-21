@@ -59,7 +59,6 @@ async function saveTarget(value: number | null): Promise<void> {
     targetDialog.value?.close()
   } catch (error) { notice.notify(error instanceof Error ? error.message : '体重目标保存失败。', 'error') }
 }
-function manageProfile(): void { close(); void router.push({ name: 'profile' }) }
 function avatarUpdated(dataUrl: string): void { avatar.value = dataUrl; emit('avatarSaved', dataUrl) }
 
 defineExpose({ open })
@@ -67,7 +66,7 @@ defineExpose({ open })
 
 <template>
   <BaseDialog ref="dialog" class="user-dialog" aria-labelledby="account-title" @close="$emit('close')">
-    <div class="user-dialog-top"><p class="eyebrow">ACCOUNT</p><button class="user-dialog-close" type="button" aria-label="关闭用户信息" @click="close">×</button></div>
+    <div class="user-dialog-top"><p class="eyebrow">用户数据</p><button class="user-dialog-close" type="button" aria-label="关闭用户信息" @click="close">×</button></div>
     <div class="account-dialog-identity">
       <div class="account-avatar-wrap"><button class="account-avatar-button" type="button" aria-label="更换头像" @click="avatarCrop?.openPicker()"><span class="user-avatar" :class="{ 'has-avatar-image': avatar }"><img v-if="avatar" :src="avatar" alt="" /><template v-else>禾</template></span></button></div>
       <div><p class="eyebrow">本机账号</p><h2 id="account-title">{{ auth.user?.display_name }}</h2><p>账号：{{ auth.user?.username }}</p></div>
@@ -87,7 +86,6 @@ defineExpose({ open })
     </section>
     <div class="account-dialog-note">训练计划和记录保存在当前账号下的本机数据库。</div>
     <div class="body-goal-link"><div><span>围度 · 体成分 · 对比照</span><b>塑型追踪</b></div><button class="text-button" type="button" @click="close(); router.push({ name: 'shaping' })">查看变化</button></div>
-    <div class="account-dialog-actions"><button class="button button-primary" type="button" @click="manageProfile">管理身体档案</button><button class="button button-quiet" type="button" @click="logout">退出登录</button></div>
     <BaseDialog ref="targetDialog" class="user-dialog weight-target-dialog" aria-labelledby="target-title"><div class="user-dialog-top"><div><p class="eyebrow">WEIGHT GOAL</p><h2 id="target-title">设置体重目标</h2></div><button class="user-dialog-close" type="button" aria-label="关闭体重目标设置" @click="targetDialog?.close()">×</button></div><p class="weight-target-description">目标体重单独管理，只用于查看与当前体重的差距和进度，不会自动改变训练强度或推算达成时间。</p><form class="form-stack" @submit.prevent="saveTarget(targetInput)"><label class="field"><span>目标体重（千克）</span><input v-model.number="targetInput" type="number" min="25" max="300" step="0.1" required placeholder="例如 60" /></label><div class="account-dialog-actions weight-target-actions"><button class="button button-quiet" type="button" @click="saveTarget(null)">清除目标</button><button class="button button-primary" type="submit">保存目标</button></div></form></BaseDialog>
     <AvatarCropDialog ref="avatarCrop" @saved="avatarUpdated" />
   </BaseDialog>

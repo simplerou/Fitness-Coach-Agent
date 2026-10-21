@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useDietStore } from '@/stores/diet'
 
 const diet = useDietStore()
-const emit = defineEmits<{ generate: []; 'open-profile': [] }>()
+const emit = defineEmits<{ 'open-profile': [] }>()
 const result = computed(() => diet.plan)
 const ready = computed(() => result.value?.status === 'ready')
 const summary = computed(() => result.value?.summary || {})
@@ -23,7 +23,7 @@ function chooseHistory(index: number): void { diet.plan = diet.planHistory[index
 
 <template>
   <article class="panel diet-plan-panel">
-    <div class="panel-head"><div><p class="eyebrow">AI DIET PLANNING</p><h3>一周饮食计划</h3></div><button class="button button-primary" type="button" :disabled="diet.generatingPlan" @click="emit('generate')">更新本周计划</button></div>
+    <div class="panel-head"><div><p class="eyebrow">AI DIET PLANNING</p><h2>一周饮食计划</h2></div></div>
     <p class="fine-print diet-refresh-note">初次根据身体档案和饮食偏好生成；之后可结合近 7 天餐食、饮水、训练和体重记录更新计划。营养目标由后端公式计算，AI 负责安排不同餐次的食物示例；记录食物后，系统按食物库和分量计算实际营养。每次更新都会保存历史快照。</p>
     <div v-if="!result" class="empty-state"><p>先完善身体档案与饮食规划档案，即可生成初始计划；之后记录每日餐食，在下方查看实际摄入与目标的差距。</p><button class="button button-primary" type="button" @click="emit('open-profile')">完善档案并设置计划</button></div>
     <div v-else-if="!ready" class="empty-state"><p>{{ result.message || (result.status === 'professional_support' ? '当前情况需要先咨询医生或注册营养师。' : '请补充所需资料后再生成，不会用猜测值代替。') }}</p><ul v-if="result.missing?.length"><li v-for="item in result.missing" :key="item">{{ item }}</li></ul><button class="button button-primary" type="button" @click="emit('open-profile')">完善档案并设置计划</button></div>
@@ -38,7 +38,7 @@ function chooseHistory(index: number): void { diet.plan = diet.planHistory[index
       <section><h4>现有习惯与调整</h4><p><b>可保留：</b>{{ result.recorded_habits?.keep || '' }}</p><p><b>优先调整：</b>{{ result.recorded_habits?.adjust || '' }}</p><p>{{ result.execution_context?.cooking_access || '' }}；每周外食 {{ number(result.execution_context?.eating_out_per_week) }} 次；执行条件：{{ result.execution_context?.budget_note || '未填写' }}。</p></section>
       <section><h4>追踪与计算说明</h4><p>{{ result.tracking?.period || '' }}</p><ul v-if="list(result.tracking?.next_data).length"><li v-for="item in list(result.tracking?.next_data)" :key="item">{{ item }}</li></ul><details><summary>查看数据假设与边界</summary><ul><li v-for="item in list(result.assumptions)" :key="item">{{ item }}</li></ul></details></section>
     </div>
-    <article class="panel diet-history-panel"><div class="panel-head"><div><p class="eyebrow">SAVED REVIEWS</p><h3>近期规划记录</h3></div><button class="text-button" type="button" @click="diet.loadHistory">刷新</button></div><div v-if="diet.planHistory.length" class="diet-history-list"><button v-for="(item,index) in diet.planHistory" :key="item.id" class="diet-history-item" type="button" @click="chooseHistory(index)"><strong>{{ new Date(item.created_at).toLocaleString('zh-CN') }}</strong><span>{{ item.plan_data.summary?.goal || '饮食规划' }} · {{ number(item.plan_data.target?.calories_kcal) }} kcal/日</span></button></div><p v-else class="empty-state">生成规划后，会保留历史快照供你对比。</p></article>
+
   </article>
 </template>
 

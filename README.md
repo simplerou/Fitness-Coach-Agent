@@ -78,6 +78,8 @@ npm run dev
 
 ## 当前版本边界
 
+塑型追踪已加入智能联动层：按近 4 周训练记录识别覆盖不足部位、动作库检索教练问答、训练/休息日饮食目标建议，以及自动补生成的周/月报告。数值计算由后端规则完成；通义千问只在用户授权后基于动作库上下文组织问答。完整数据流、表结构和验收步骤见 [塑型智能联动层升级与验收](../项目文档/版本设计/塑型智能联动层升级与验收.md)。
+
 这是本机流程演示，不是可供真实用户使用的健康产品。每日状态、训练日志、计划、身体档案和安全暂停按账号保存在本机 PostgreSQL；当日筛查状态保存在服务进程中，服务重启、切换账号或日期变化后需重新筛查。数据库首次注册时会把旧版单用户记录交给第一个注册账号；建议先备份数据库。密码以 PBKDF2 散列保存，会话使用签名 Cookie；健康资料未做应用层加密，暂不适合公开部署。应用不提供找回密码、账号删除或管理员控制台。只作功能演示时建议使用虚构数据；不要把计划当作医疗或个体化处方。
 
 ## 版本路线
@@ -107,3 +109,18 @@ npm run dev
 - 建议从 `backend/app/main.py` 了解接口流程，从 `backend/app/database.py` 了解 PostgreSQL 表和会话，再看 `web/src/api`、`web/src/stores` 和 `web/src/views` 如何调用接口并呈现页面。
 - 新增或修改代码时，同步写简明中文注释，说明模块职责、关键数据流，以及不容易从代码本身看出的业务约束（尤其是安全门禁和数据保存规则）。
 - 注释解释“为什么这样处理”或“需要注意什么”，不逐行复述代码；空的规划占位文件等开始实现时再补充对应说明。
+# Exercise RAG knowledge base
+
+The coach Q&A retrieves from both the structured exercise library and reviewed, paraphrased summaries of public training guidance. The reviewed source catalog is `backend/data/exercise_knowledge_seed.json`; each external summary stores its publisher, publication date when available, source URL, and rights note. Do not copy full articles into the corpus. Add or revise a summary there, then restart the backend to sync it into PostgreSQL.
+
+Retrieval always runs Chinese BM25 locally. Vectors are stored in a local persistent Chroma collection at `backend/.chroma` (configurable through `EXERCISE_RAG_CHROMA_PATH`). If the user checks the cloud consent box, the question may also be embedded with DashScope and fused with BM25 using reciprocal-rank fusion (RRF); the consent checkbox also controls sending the question and retrieved excerpts to the Qwen answer model. Medical/injury questions bypass retrieval and the model. No consent means no question is sent to DashScope.
+
+To build/rebuild semantic vectors after setting `DASHSCOPE_API_KEY` in the project `.env` and installing `backend/requirements.txt`:
+
+```powershell
+python backend/scripts/index_exercise_knowledge.py
+# Re-embed every approved document into Chroma:
+python backend/scripts/index_exercise_knowledge.py --force
+```
+
+The app remains usable with BM25 if the Chroma index has not been built. On first startup, the backend creates/syncs the `exercise_knowledge_documents` table after seeding the exercise library. Existing installations can also apply `backend/migrations/20261020_exercise_knowledge_documents.sql` manually; ORM startup uses `create_all` as before. The SQL table stores document text and source metadata, while Chroma stores embeddings. Retrieved source cards show the source title, publisher, date, excerpt, and original link.

@@ -1,0 +1,86 @@
+.diet-planning-fold>summary small{color:#879189;font-size:10px}
+.diet-planning-content{padding-top:15px}
+@media(max-width:760px){.diet-dashboard{grid-template-columns:1fr;gap:10px}.diet-today-summary,.diet-nutrition-card{grid-column:auto}.diet-dashboard>.panel{padding:17px}.diet-intake-status{gap:8px;font-size:10px}.diet-macro-layout{grid-template-columns:minmax(0,1fr) 88px;gap:12px}.diet-macro-chart{width:84px}.diet-macro-chart:before{width:42px}.diet-macro-row>div:first-child{font-size:10px}.diet-target-notice{align-items:flex-start;flex-direction:column}}
+@media(max-width:380px){.diet-calorie-gauge{width:210px}.diet-intake-status{gap:5px;font-size:9px}}
+
+.diet-meal-prompt{margin:0 0 17px;color:#78867d;font-size:11px;line-height:1.75}
+.diet-meal-dialog{width:min(540px,calc(100vw - 30px));max-height:calc(100vh - 28px);overflow-y:auto}
+.diet-meal-dialog .user-dialog-top h2{margin:5px 0 0;font-size:20px}
+.weight-target-dialog{width:min(430px,calc(100vw - 30px))}.weight-target-dialog .user-dialog-top h2{margin:5px 0 0;font-size:20px}.weight-target-description{margin:12px 0 18px;color:var(--muted);font-size:12px;line-height:1.75}.weight-target-dialog .field input{min-height:44px}.weight-target-actions{margin-top:4px}.weight-target-actions .button{min-height:42px}
+.diet-meal-dialog-date{margin:14px 0 18px;padding:10px 12px;border-radius:8px;background:#f4f7f2;color:#718079;font-size:11px}
+.diet-meal-dialog-date b{color:#284c38;font-weight:650}
+.diet-meal-dialog .form-stack{gap:14px}
+.diet-meal-dialog .field>span{font-size:11px}
+.diet-meal-dialog .field input,.diet-meal-dialog .field select,.diet-meal-dialog .field textarea{min-height:42px;font-size:12px}
+.diet-meal-dialog .field textarea{min-height:70px}
+.diet-meal-dialog .diet-nutrient-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.diet-meal-dialog .diet-food-picker{display:grid;gap:9px;padding:12px;border:1px solid #e3ebe3;border-radius:12px;background:#f8faf7}
+.diet-food-search-results,.diet-selected-foods{display:grid;gap:7px}
+.diet-food-search-results{max-height:min(34vh,300px);overflow-y:auto;overscroll-behavior:contain;padding:2px 5px 2px 0;scrollbar-width:thin;scrollbar-color:#b8c9bd transparent}
+.diet-food-search-results::-webkit-scrollbar{width:7px}
+.diet-food-search-results::-webkit-scrollbar-thumb{border-radius:8px;background:#b8c9bd}
+.diet-food-result{display:grid;gap:4px;width:100%;padding:10px 12px;border:1px solid #e0e8df;border-radius:9px;background:#fff;color:#274536;text-align:left;cursor:pointer}
+.diet-food-result:hover{border-color:#9cc8aa;background:#f5faf5}
+.diet-food-result.selected{border-color:#75b890;background:#eef7f0}
+.diet-meal-type-lock{margin:0;padding:10px 12px;border-radius:9px;background:#f4f7f3;color:#64756a}
+.diet-meal-type-lock strong{margin-left:6px;color:#174d36}
+.diet-food-library-dialog{width:min(720px,calc(100vw - 32px))}
+.diet-food-library-search{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px;margin:16px 0 8px}
+.diet-food-library-detail{margin-top:16px;padding:16px;border-radius:12px;background:#f4f7f3}
+.diet-food-library-detail h3{margin:0 0 12px;color:#174d36}
+.diet-food-library-detail h3 small{margin-left:8px;color:#7c8981;font-size:12px;font-weight:400}
+.diet-food-library-detail dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0}
+.diet-food-library-detail dl div{padding:10px;border-radius:8px;background:#fff}
+.diet-food-library-detail dt{color:#7c8981;font-size:12px}
+.diet-food-library-detail dd{margin:4px 0 0;color:#274536;font-weight:600}
+@media(max-width:560px){.diet-food-library-search{grid-template-columns:1fr}.diet-food-library-detail dl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.diet-food-result strong,.diet-selected-food strong{font-size:12px}
+.diet-food-result small,.diet-selected-food small{color:#7c8981;font-size:10px;line-height:1.55}
+.diet-selected-food{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;align-items:center;gap:8px;padding:9px 10px;border:1px solid #e0e8df;border-radius:9px;background:#fff}
+.diet-selected-food>div{display:grid;gap:3px;min-width:0}
+.diet-selected-food label{display:grid;gap:3px;color:#718079;font-size:10px}
+.diet-selected-food input{min-height:34px;width:100%;padding:5px 7px;border:1px solid #dce5dd;border-radius:7px;font:inherit}
+.diet-nutrition-summary{display:grid;gap:8px;padding:12px;border:1px solid #dce9dc;border-radius:10px;background:#f2f7f2;color:#274536}
+.diet-nutrition-summary>strong{font-size:13px}
+.diet-nutrition-summary>div{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.diet-nutrition-summary>div span{display:grid;gap:3px;color:#718079;font-size:10px}
+.diet-nutrition-summary>div b{color:#176747;font-size:13px}
+.diet-nutrition-summary>small{color:#7c8981;font-size:10px;line-height:1.5}
+.diet-food-picker .fine-print{margin:0}
+.diet-meal-dialog button:focus-visible{outline:3px solid #9bc5a3;outline-offset:3px}
+  @media(max-width:600px){.diet-meal-dialog{padding:20px 17px}.diet-meal-dialog .field-row{grid-template-columns:1fr}.diet-meal-dialog .diet-nutrient-fields{grid-template-columns:1fr 1fr}.diet-nutrition-summary>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.diet-insight-card{grid-column:1/-1}
+.diet-insight-content{display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,.8fr);align-items:center;gap:28px}
+.diet-insight-meal{display:grid;justify-items:start;gap:10px}
+.diet-insight-meal h3{margin:0;font-size:17px;line-height:1.5}
+.diet-insight-meal>p{margin:0;color:#829087;font-size:11px;line-height:1.7}
+.diet-insight-meal .button{margin-top:3px}
+.diet-water-quick{display:grid;gap:10px;padding:14px 16px;border:1px solid #e8eee8;border-radius:11px;background:rgba(255,255,255,.72)}
+.diet-water-quick-total{display:flex;align-items:center;justify-content:space-between;color:#718079;font-size:11px}
+.diet-water-quick-total strong{color:var(--green);font-size:23px;font-variant-numeric:tabular-nums}
+.diet-water-quick-total small{font-size:10px;font-weight:500}
+.diet-water-target-line{display:flex;justify-content:space-between;gap:8px;color:#718079;font-size:10px}
+.diet-water-progress{height:6px;margin-top:-3px;background:#e8eee8}
+.diet-water-progress i{width:0;background:#27bf8a;transition:width .25s ease}
+.diet-hydration-review{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px;padding:15px 16px;border:1px solid #e6ece6;border-radius:10px;background:#f7f9f6}
+.diet-hydration-review>div{display:grid;gap:4px}
+.diet-hydration-review .eyebrow{margin:0}
+.diet-hydration-review strong{font-size:14px}
+.diet-hydration-review strong.is-complete{color:#17805b}
+.diet-hydration-review>p{max-width:420px;margin:0;color:#77847b;font-size:10px;line-height:1.6}
+.diet-water-quick-form{display:grid;grid-template-columns:minmax(100px,1fr) auto;align-items:end;gap:9px}
+.diet-water-quick-form .field{margin:0}
+.diet-water-quick-form .field>span{margin-bottom:5px;color:#748078;font-size:10px}
+.diet-water-quick-form .field input{min-height:39px;font-size:11px}
+.diet-water-quick-form .button{min-height:39px;padding:0 13px;font-size:10px;white-space:nowrap}
+.diet-water-quick>p{margin:0;color:#9aa39c;font-size:9px;line-height:1.5}
+@media(max-width:760px){.diet-insight-card{grid-column:auto}.diet-insight-content{grid-template-columns:1fr;gap:18px}.diet-water-quick-form{grid-template-columns:minmax(100px,1fr) auto}}
+@media(max-width:420px){.diet-water-quick-form{grid-template-columns:1fr}.diet-water-quick-form .button{width:100%}}
+@media(max-width:600px){.diet-hydration-review{align-items:flex-start;flex-direction:column;gap:8px}}
+@media(max-width:520px){.diet-day-meals{grid-template-columns:1fr}}
+
+.diet-meal-actions{display:flex;align-items:flex-start;gap:10px;flex:0 0 auto}
+.diet-meal-actions .text-button{padding:4px 2px;font-size:10px}
+.diet-meal-actions .diet-delete-button{color:#a75d50}
+

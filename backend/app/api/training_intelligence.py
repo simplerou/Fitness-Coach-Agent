@@ -39,7 +39,7 @@ def consecutive_weeks(logs: list[TrainingLogRecord], source_week: date) -> int:
     return count
 
 
-def create_training_intelligence_router(authenticate: Callable, require_safety: Callable,
+def create_training_intelligence_router(authenticate: Callable,
                                         get_registration_date: Callable, schedule_for_day: Callable,
                                         week_start_for: Callable) -> APIRouter:
     router = APIRouter(prefix="/api/training", tags=["训练智能"])
@@ -68,7 +68,6 @@ def create_training_intelligence_router(authenticate: Callable, require_safety: 
 
     @router.post("/logs")
     def create_smart_log(payload: SmartTrainingLogInput, user_id: int = Depends(authenticate)) -> dict:
-        require_safety(user_id, payload.training_date)
         with SessionLocal() as db:
             if payload.training_date < get_registration_date(db, user_id):
                 raise HTTPException(422, "训练日期早于本地档案起始日期，不能保存该记录。")
@@ -164,6 +163,17 @@ def create_training_intelligence_router(authenticate: Callable, require_safety: 
                 raise HTTPException(409, "该建议已经处理。")
             row.status = payload.decision; row.resolved_at = datetime.now(timezone.utc); db.commit()
         return {"ok": True, "status": payload.decision, "message": "已采纳进阶建议。" if payload.decision == "adopted" else "已忽略本次建议。"}
+
+    @router.delete("/advice/{advice_id}/decision")
+    def reset_advice_decision(advice_id: int, user_id: int = Depends(authenticate)) -> dict:
+        with SessionLocal() as db:
+            row = db.get(ExerciseAdviceRecord, advice_id)
+            if row is None or row.user_id != user_id:
+                raise HTTPException(404, "未找到该进阶建议。")
+            row.status = "pending"
+            row.resolved_at = None
+            db.commit()
+        return {"ok": True, "status": "pending", "message": "已撤销本次处理，建议重新回到待确认状态。"}
 
     @router.get("/recovery/summary")
     def recovery_summary(user_id: int = Depends(authenticate)) -> dict:

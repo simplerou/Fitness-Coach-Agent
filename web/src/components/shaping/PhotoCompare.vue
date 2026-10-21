@@ -5,10 +5,14 @@ import { PHOTO_VIEWS, PHOTO_LABELS } from '@/constants/shaping'
 import { photoUrl } from '@/utils/shaping'
 import type { ShapePhotoView } from '@/api/types'
 import ShapeSnapshot from './ShapeSnapshot.vue'
+import FilterSelect from '@/components/ui/FilterSelect.vue'
 const props = defineProps<{ date: string }>()
 const shaping = useShapingStore()
 const angle = ref<ShapePhotoView>('front')
 const beforeDate = ref('')
+const angleValue = computed({ get: () => angle.value, set: (value: string) => { angle.value = value as ShapePhotoView } })
+const angleOptions = PHOTO_VIEWS.map(view => ({ value: view, label: PHOTO_LABELS[view] }))
+const dateOptions = computed(() => [{ value: '', label: '请选择更早记录' }, ...dates.value.filter(day => day < props.date).map(date => ({ value: date, label: date }))])
 const slider = ref(50)
 const dragging = ref(false)
 const dates = computed(() => [...new Set(shaping.photos.filter(photo => photo.view === angle.value).map(photo => photo.recorded_on))].sort())
@@ -33,7 +37,7 @@ function startDrag(event: PointerEvent): void {
 
 <template>
   <div class="shape-photo-compare">
-    <div class="shape-compare-controls"><label class="field"><span>对比视角</span><select v-model="angle"><option v-for="view in PHOTO_VIEWS" :key="view" :value="view">{{ PHOTO_LABELS[view] }}</option></select></label><label class="field"><span>之前的日期</span><select v-model="beforeDate"><option value="">请选择更早记录</option><option v-for="date in dates.filter(day => day < props.date)" :key="date" :value="date">{{ date }}</option></select></label><div class="shape-muted">当前对比：{{ date || '未选择日期' }}</div></div>
+    <div class="shape-compare-controls"><label class="field"><span>对比视角</span><FilterSelect v-model="angleValue" :options="angleOptions" aria-label="对比视角" /></label><label class="field"><span>之前的日期</span><FilterSelect v-model="beforeDate" :options="dateOptions" aria-label="之前的日期" /></label><div class="shape-muted">当前对比：{{ date || '未选择日期' }}</div></div>
     <template v-if="before && after && beforeDate !== date">
       <div class="shape-comparison-frame" @pointerdown="startDrag" @pointermove="moveDivider" @pointerup="dragging = false" @pointercancel="dragging = false" @lostpointercapture="dragging = false"><img :src="photoUrl(after)" :alt="`${date}${PHOTO_LABELS[angle]}`" draggable="false" /><img class="shape-comparison-before" :src="photoUrl(before)" :style="{ clipPath: `inset(0 ${100 - slider}% 0 0)` }" :alt="`${beforeDate}${PHOTO_LABELS[angle]}`" draggable="false" /><span class="shape-comparison-divider" :style="{ left: `${slider}%` }" /><div class="shape-comparison-labels"><span>之前 {{ beforeDate }}</span><span>之后 {{ date }}</span></div></div>
       <label class="shape-photo-slider">滑动比较同一视角<input v-model.number="slider" type="range" min="0" max="100" :aria-valuetext="`之前照片显示 ${slider}%`" /></label>

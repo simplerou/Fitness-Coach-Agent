@@ -3,12 +3,10 @@ import { defineStore } from 'pinia'
 import { generatePlan, getCurrentPlan, getPlanHistory, getPlanPreferences } from '@/api/plan'
 import type { PlanHistoryItem, PlanPreferences, WeekPlan } from '@/api/types'
 import { useProfileStore } from '@/stores/profile'
-import { useSafetyStore } from '@/stores/safety'
-import { localDateString, mondayFor } from '@/utils/date'
+import { localDateString } from '@/utils/date'
 
 export const usePlanStore = defineStore('plan', () => {
   const profileStore = useProfileStore()
-  const safety = useSafetyStore()
   const preferences = reactive<PlanPreferences>({
     goal: 'fitness', days_per_week: 3, training_weekdays: [1, 3, 5],
     experience_level: 'beginner', equipment: ['bodyweight_only'], session_minutes: 30,
@@ -93,16 +91,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   async function loadAll(): Promise<void> {
-    await Promise.all([profileStore.load().catch(() => undefined), loadPreferences().catch(async (error) => {
-      if (await safety.handleSafetyGateError(error)) return
-      throw error
-    }), loadCurrent().catch(async (error) => {
-      if (await safety.handleSafetyGateError(error)) return
-      throw error
-    }), loadHistory().catch(async (error) => {
-      if (await safety.handleSafetyGateError(error)) return
-      throw error
-    })])
+    await Promise.all([profileStore.load().catch(() => undefined), loadPreferences(), loadCurrent(), loadHistory()])
   }
 
   async function create(): Promise<string> {
@@ -125,11 +114,10 @@ export const usePlanStore = defineStore('plan', () => {
     const date = localDateString().split('-').map(Number)
     return new Date(date[0], date[1] - 1, date[2]).getDay() || 7
   })
-  const todayPaused = computed(() => safety.safetyStatus === 'stop' && selectedWeek.value === mondayFor(localDateString()) && !selectedIsHistorical.value)
 
   return {
     preferences, preferencesLoaded, edited, loading, generating, currentPlan, savedAt, currentWeekStart,
     history, historyCursor, historyLoading, selectedWeek, selectedPlan, selectedIsHistorical,
-    selectedWeekday, todayPaused, recommendation, loadPreferences, loadCurrent, loadHistory, loadAll, create,
+    selectedWeekday, recommendation, loadPreferences, loadCurrent, loadHistory, loadAll, create,
   }
 })
