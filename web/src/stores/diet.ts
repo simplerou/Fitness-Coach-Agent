@@ -7,6 +7,7 @@ import { localDateString } from '@/utils/date'
 const blankProfile = (): DietProfile => ({ goal: null, activity_level: null, training_type: null, training_time: null, training_end_time: null, dietary_preference: null, allergies: null, allergies_reviewed: false, avoid_foods: null, medical_conditions: null, injuries: null, health_reviewed: false, cooking_access: null, eating_out_per_week: null, budget_note: null, water_target_ml: null })
 const macroKeys = ['calories_kcal', 'protein_g', 'carbs_g', 'fat_g'] as const
 type MacroKey = typeof macroKeys[number]
+const foodDetailCache = new Map<string, DietFood>()
 
 function numericFoodValue(value: unknown): number | null {
   if (value && typeof value === 'object') {
@@ -51,6 +52,52 @@ function normalizeFood(item: DietFood): DietSelectedFood {
       fat_g: lookup(['fatg', 'fat', 'fat100g', 'fatper100g']),
     },
   }
+}
+
+async function loadFoodSearchDetail(item: DietFood): Promise<DietFood> {
+  const row = item as Record<string, unknown>
+  const code = row.code || row.food_code || row.food_id || row.id
+  if (!code) {
+    const macros = normalizeFood(item).macros
+    return { ...row, ...macros, __detail_loaded: true,
+      __detail_unavailable: macroKeys.some((macro) => macros[macro] == null) }
+  }
+
+  try {
+    const key = String(code)
+    let detail = foodDetailCache.get(key)
+    if (!detail) {
+      detail = (await getFoodDetail(key)).food
+      foodDetailCache.set(key, detail)
+    }
+    const detailValues = normalizeFood(detail).macros
+    const searchValues = normalizeFood(item).macros
+    const macros = Object.fromEntries(macroKeys.map((macro) => [
+      macro, detailValues[macro] ?? searchValues[macro],
+    ])) as Record<MacroKey, number | null>
+    return {
+      ...row, ...(detail as Record<string, unknown>), ...macros,
+      __detail_loaded: true,
+      __detail_unavailable: macroKeys.some((macro) => macros[macro] == null),
+    }
+  } catch {
+    const macros = normalizeFood(item).macros
+    return { ...row, ...macros, __detail_loaded: true,
+      __detail_unavailable: macroKeys.some((macro) => macros[macro] == null) }
+  }
+}
+
+async function loadFoodSearchDetails(items: DietFood[]): Promise<DietFood[]> {
+  const result = [...items]
+  let nextIndex = 0
+  const worker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      result[index] = await loadFoodSearchDetail(items[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker))
+  return result
 }
 
 export const useDietStore = defineStore('diet', () => {
@@ -124,14 +171,15 @@ export const useDietStore = defineStore('diet', () => {
     searchKeyword.value = keyword.trim()
     if (!searchKeyword.value) throw new Error('请先输入食物名称。')
     searching.value = true
-    try { foods.value = (await searchFoods(searchKeyword.value)).items }
+    try { foods.value = await loadFoodSearchDetails((await searchFoods(searchKeyword.value)).items) }
     finally { searching.value = false }
   }
   async function addFood(item: DietFood): Promise<void> {
     let selected = item
     const row = item as Record<string, unknown>
-    const code = row.code || row.food_code || row.food_id
-    if (code) {
+    // 薄荷搜索结果有时只返回 id；也要用它查询详情，避免食物被加入但营养值一直为空。
+    const code = row.code || row.food_code || row.food_id || row.id
+    if (code && !row.__detail_loaded) {
       try { selected = (await getFoodDetail(String(code))).food }
       catch { /* 保留搜索结果，让用户仍可选择食物名称 */ }
     }

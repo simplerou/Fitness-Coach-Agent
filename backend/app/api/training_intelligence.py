@@ -11,7 +11,7 @@ from ..models.training_intelligence import (
     RecoveryCheckinRecord, TrainingExerciseEntryRecord,
 )
 from ..schemas.training_intelligence import AdjustmentDecisionInput, AdviceDecisionInput, SmartTrainingLogInput
-from ..services.plan_adjustment_service import build_adjustment
+from ..services.coach_plan import compute_plan_adjustment, consecutive_weeks
 from ..services.progressive_overload import progression_recommendation
 from ..services.recovery_service import assess_recovery
 
@@ -28,15 +28,6 @@ def advice_dict(row: ExerciseAdviceRecord, exercise: ExerciseLibraryRecord) -> d
     return {"id": row.id, "exercise_id": row.exercise_id, "exercise_name": exercise.name,
             "advice_type": row.advice_type, "prescription": row.prescription, "evidence": row.evidence,
             "reason": row.reason, "status": row.status, "created_at": row.created_at.isoformat()}
-
-
-def consecutive_weeks(logs: list[TrainingLogRecord], source_week: date) -> int:
-    active = {row.training_date - timedelta(days=row.training_date.weekday()) for row in logs if row.completion in {"completed", "partial"}}
-    count, cursor = 0, source_week
-    while cursor in active:
-        count += 1
-        cursor -= timedelta(days=7)
-    return count
 
 
 def create_training_intelligence_router(authenticate: Callable,
@@ -195,46 +186,7 @@ def create_training_intelligence_router(authenticate: Callable,
             plan = db.get(WeeklyPlanRecord, (user_id, source))
             if plan is None:
                 raise HTTPException(409, "所选周没有可用于复盘的训练计划。")
-            end = source + timedelta(days=6)
-            logs = db.scalars(select(TrainingLogRecord).where(TrainingLogRecord.user_id == user_id,
-                TrainingLogRecord.training_date >= source, TrainingLogRecord.training_date <= end)).all()
-            recoveries = db.scalars(select(RecoveryCheckinRecord).where(RecoveryCheckinRecord.user_id == user_id,
-                RecoveryCheckinRecord.checkin_date >= source, RecoveryCheckinRecord.checkin_date <= end)).all()
-            entries = db.scalars(select(TrainingExerciseEntryRecord).join(TrainingLogRecord,
-                TrainingLogRecord.id == TrainingExerciseEntryRecord.log_id).where(TrainingExerciseEntryRecord.user_id == user_id,
-                TrainingLogRecord.training_date >= source, TrainingLogRecord.training_date <= end)).all()
-            advices = db.scalars(select(ExerciseAdviceRecord).join(TrainingLogRecord,
-                TrainingLogRecord.id == ExerciseAdviceRecord.log_id).where(ExerciseAdviceRecord.user_id == user_id,
-                TrainingLogRecord.training_date >= source, TrainingLogRecord.training_date <= end)).all()
-            planned_days = len(plan.plan_data.get("training_weekdays", [])) or 1
-            completed = sum(row.completion in {"completed", "partial"} for row in logs)
-            status_order = {"stop": 4, "insufficient": 3, "rest": 3, "attention": 2, "good": 1}
-            worst = max(recoveries, key=lambda row: status_order.get(row.status, 0)).status if recoveries else "unknown"
-            history = db.scalars(select(TrainingLogRecord).where(TrainingLogRecord.user_id == user_id,
-                TrainingLogRecord.training_date <= end)).all()
-            stats = {"completion_rate": round(completed / planned_days, 2),
-                "average_rpe": round(sum(row.rpe for row in logs if row.rpe is not None) / len([row for row in logs if row.rpe is not None]), 1) if any(row.rpe is not None for row in logs) else None,
-                "recovery_status": worst, "has_warning_symptom": any(row.warning_symptom != "none" for row in recoveries),
-                "tracked_exercises": len({row.exercise_id for row in entries}),
-                "progressed_exercises": len({row.exercise_id for row in advices}),
-                "consecutive_training_weeks": consecutive_weeks(history, source)}
-            planned_exercises = [item for session in plan.plan_data.get("sessions", []) for item in session.get("exercises", [])]
-            if stats["tracked_exercises"] and not stats["progressed_exercises"] and planned_exercises:
-                current = db.get(ExerciseLibraryRecord, planned_exercises[0].get("id"))
-                pref = db.scalar(select(TrainingPreferencesRecord).where(TrainingPreferencesRecord.user_id == user_id))
-                candidates = db.scalars(select(ExerciseLibraryRecord).where(ExerciseLibraryRecord.category == current.category,
-                    ExerciseLibraryRecord.id != current.id).order_by(ExerciseLibraryRecord.id)).all() if current else []
-                preferred_ids = set(pref.preferred_exercise_ids or []) if pref else set()
-                if preferred_ids:
-                    candidates = [item for item in candidates if item.id in preferred_ids]
-                else:
-                    plan_equipment = set(plan.plan_data.get("equipment", []))
-                    candidates = [item for item in candidates if plan_equipment.intersection(item.equipment)]
-                if candidates:
-                    replacement = candidates[0]
-                    stats["replacement"] = {"from": planned_exercises[0], "to": {"id": replacement.id,
-                        "name": replacement.name, "category": replacement.category, "target_muscles": replacement.target_muscles}}
-            recommendation = build_adjustment(plan.plan_data, stats)
+            recommendation = compute_plan_adjustment(db, user_id, source)
             db.query(PlanAdjustmentRecord).filter(PlanAdjustmentRecord.user_id == user_id,
                 PlanAdjustmentRecord.source_week_start == source, PlanAdjustmentRecord.status == "pending").update({"status": "ignored", "resolved_at": datetime.now(timezone.utc)})
             row = PlanAdjustmentRecord(user_id=user_id, source_week_start=source, target_week_start=target, recommendation=recommendation)

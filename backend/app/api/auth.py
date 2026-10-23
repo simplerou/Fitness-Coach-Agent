@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select, text
 from ..core.security import hash_password, verify_password
 from ..database import AccountUserRecord, claim_legacy_data_for_first_user, initialize_user_defaults
-from ..schemas.auth import RegisterRequest, LoginRequest
+from ..schemas.auth import RegisterRequest, LoginRequest, DeleteAccountRequest
 from ..services.safety_service import SCREENING_DATES
 
 
@@ -67,6 +67,26 @@ def create_auth_router(authenticated_user_id, session_factory):
 
     @router.post("/api/auth/logout")
     def logout_account(request: Request, user_id: int = Depends(authenticated_user_id)) -> dict:
+        request.session.clear()
+        SCREENING_DATES.pop(user_id, None)
+        return {"ok": True}
+
+    @router.delete("/api/auth/account")
+    def delete_account(payload: DeleteAccountRequest, request: Request,
+                       user_id: int = Depends(authenticated_user_id)) -> dict:
+        # Only delete the signed-in account; account id is never accepted from the client.
+        with SessionLocal() as db:
+            user = db.scalar(select(AccountUserRecord).where(
+                AccountUserRecord.id == user_id).with_for_update())
+            if user is None:
+                raise HTTPException(status_code=401, detail="登录状态已失效，请重新登录。")
+            if not verify_password(payload.password, user.password_salt, user.password_hash):
+                raise HTTPException(status_code=403, detail="当前密码不正确，账号未注销。")
+            # All account-owned tables reference account_users with ON DELETE CASCADE.
+            # Photos are stored in the database; shared exercises/knowledge remain untouched.
+            # A failure rolls back the whole transaction, including the account deletion.
+            db.delete(user)
+            db.commit()
         request.session.clear()
         SCREENING_DATES.pop(user_id, None)
         return {"ok": True}

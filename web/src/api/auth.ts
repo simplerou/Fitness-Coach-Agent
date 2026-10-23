@@ -1,6 +1,7 @@
 import { request } from './client'
 import type {
   AuthLogoutResponse,
+  DeleteAccountPayload,
   AuthResponse,
   LoginPayload,
   RegisterPayload,
@@ -26,4 +27,11 @@ export function getCurrentAccount(): Promise<AuthResponse> {
 
 export function logoutAccount(): Promise<AuthLogoutResponse> {
   return request<AuthLogoutResponse>('/api/auth/logout', { method: 'POST' })
+}
+
+export function deleteAccount(payload: DeleteAccountPayload): Promise<AuthLogoutResponse> {
+  return request<AuthLogoutResponse>('/api/auth/account', {
+    method: 'DELETE',
+    body: JSON.stringify(payload),
+  })
 }

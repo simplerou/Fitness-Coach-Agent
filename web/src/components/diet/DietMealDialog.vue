@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import TimePicker from '@/components/ui/TimePicker.vue'
 import { useDietStore } from '@/stores/diet'
 import { useNotice } from '@/composables/useNotice'
 import type { DietMeal, DietMealType } from '@/api/types'
@@ -17,9 +18,13 @@ const total = computed(() => diet.selectedTotals.values)
 watch(() => diet.mealDialogOpen, (open) => open ? dialog.value?.open() : dialog.value?.close())
 
 async function search(): Promise<void> {
+  searchStatus.value = '正在查询食物并读取每 100 克营养数据…'
   try {
     await diet.searchFoodsForKeyword(query.value)
-    searchStatus.value = diet.foods.length ? '请选择食物；点击后会读取详情并按每 100 克换算。' : `没有找到结果，请更换关键词或添加“${diet.searchKeyword}”作为自定义食物。`
+    const hasUnavailable = diet.foods.some((food) => (food as Record<string, unknown>).__detail_unavailable)
+    searchStatus.value = diet.foods.length
+      ? hasUnavailable ? '已显示可取得的每 100 克营养值；标为“未提供”的项目不会参与营养汇总。' : '已显示每 100 克营养值，可据此选择食物。'
+      : `没有找到结果，请更换关键词或添加“${diet.searchKeyword}”作为自定义食物。`
   } catch (error) { searchStatus.value = error instanceof Error ? error.message : '食物查询失败。' }
 }
 async function addFood(index: number): Promise<void> {
@@ -27,7 +32,9 @@ async function addFood(index: number): Promise<void> {
   if (!food) return
   searchStatus.value = '正在读取薄荷食物详情…'
   await diet.addFood(food)
-  searchStatus.value = diet.selectedTotals.complete ? '已按薄荷每 100 克数据和所选克数实时换算。' : '自定义食物没有营养数据，暂不能汇总整餐。'
+  searchStatus.value = diet.selectedTotals.complete
+    ? '已按每 100 克营养值和所选克数实时换算。'
+    : '该食物缺少完整营养数据，暂不能汇总整餐；可移除后选择有完整数据的食物。'
 }
 async function save(): Promise<void> {
   try { notice.notify(await diet.saveMealData(), 'success') }
@@ -48,18 +55,18 @@ defineExpose({ open: (meal?: DietMeal | null, mealType?: DietMealType) => { diet
         <button class="button button-quiet" type="button" :disabled="diet.searching" @click="search">{{ diet.searching ? '正在查询…' : '查询薄荷食物库' }}</button>
         <p class="fine-print" aria-live="polite">{{ searchStatus }}</p>
         <div class="diet-food-search-results" aria-live="polite">
-          <button v-for="(food,index) in diet.foods" :key="String(food.code || food.id || index)" class="diet-food-result" type="button" @click="addFood(index)"><strong>{{ String(food.name || food.food_name || food.title || '未命名食物') }}</strong><small>按每 100 克 · {{ food.calories_kcal ?? food.kcal ?? '—' }} kcal · 蛋白质 {{ food.protein_g ?? '—' }}g · 碳水 {{ food.carbs_g ?? '—' }}g · 脂肪 {{ food.fat_g ?? '—' }}g</small></button>
+          <button v-for="(food,index) in diet.foods" :key="String(food.code || food.food_code || food.food_id || food.id || index)" class="diet-food-result" type="button" @click="addFood(index)"><strong>{{ String(food.name || food.food_name || food.title || '未命名食物') }}</strong><small>每 100 克 · {{ food.calories_kcal ?? '未提供' }} kcal · 蛋白质 {{ food.protein_g ?? '未提供' }}g · 碳水 {{ food.carbs_g ?? '未提供' }}g · 脂肪 {{ food.fat_g ?? '未提供' }}g</small></button>
           <button v-if="diet.searchKeyword && diet.foods.length === 0" class="button button-quiet" type="button" @click="diet.addCustomFood">添加“{{ diet.searchKeyword }}”</button>
         </div>
         <div v-if="diet.selectedFoods.length" class="diet-selected-foods">
           <div v-for="(food,index) in diet.selectedFoods" :key="`${food.id}-${index}`" class="diet-selected-food">
-            <div><strong>{{ food.name }}</strong><small v-if="food.macros.calories_kcal != null && food.macros.protein_g != null && food.macros.carbs_g != null && food.macros.fat_g != null">本份 {{ food.grams }}g：{{ Math.round(food.macros.calories_kcal * food.grams / 100) }} kcal · 蛋白质 {{ (food.macros.protein_g * food.grams / 100).toFixed(1) }}g · 碳水 {{ (food.macros.carbs_g * food.grams / 100).toFixed(1) }}g · 脂肪 {{ (food.macros.fat_g * food.grams / 100).toFixed(1) }}g</small><small v-else>自定义食物暂无营养数据</small></div>
+            <div><strong>{{ food.name }}</strong><small v-if="food.macros.calories_kcal != null && food.macros.protein_g != null && food.macros.carbs_g != null && food.macros.fat_g != null">本份 {{ food.grams }}g：{{ Math.round(food.macros.calories_kcal * food.grams / 100) }} kcal · 蛋白质 {{ (food.macros.protein_g * food.grams / 100).toFixed(1) }}g · 碳水 {{ (food.macros.carbs_g * food.grams / 100).toFixed(1) }}g · 脂肪 {{ (food.macros.fat_g * food.grams / 100).toFixed(1) }}g</small><small v-else>食物库未提供完整营养数据，不能参与自动汇总</small></div>
             <label>克数<input type="number" min="1" max="3000" step="1" :value="food.grams" :aria-label="`${food.name}的克数`" @input="diet.updateFoodGrams(index, Number(($event.target as HTMLInputElement).value))" /></label><button class="text-button diet-delete-button" type="button" :aria-label="`移除${food.name}`" @click="diet.removeFood(index)">移除</button>
           </div>
         </div>
         <div v-if="diet.selectedFoods.length" class="diet-nutrition-summary"><template v-if="diet.selectedTotals.complete"><strong>本餐营养合计</strong><div><span>热量 <b>{{ Math.round(total.calories_kcal) }} kcal</b></span><span>蛋白质 <b>{{ total.protein_g.toFixed(1) }} g</b></span><span>碳水 <b>{{ total.carbs_g.toFixed(1) }} g</b></span><span>脂肪 <b>{{ total.fat_g.toFixed(1) }} g</b></span></div><small>根据所选克数和薄荷每 100 克数据换算，数值为估算值。</small></template><small v-else>本餐营养合计暂不可用；请移除没有营养数据的食物后查看自动汇总。</small></div>
       </section>
-      <label class="field"><span>进食时间（选填）</span><input v-model="diet.mealForm.eaten_at" type="time" /></label>
+      <div class="field"><span>进食时间（24小时制，选填）</span><TimePicker v-if="diet.mealDialogOpen" v-model="diet.mealForm.eaten_at" :aria-label="mealTypeLabel + '进食时间'" :default-time="{ breakfast: '08:00', lunch: '12:00', dinner: '18:00', snack: '15:00' }[diet.mealForm.meal_type]" /></div>
       <label class="field"><span>补充说明（选填）</span><input v-model="diet.mealForm.note" maxlength="240" placeholder="如外食、烹饪方式或用餐感受" /></label>
       <button class="button button-primary" type="submit">{{ diet.editingMealId == null ? '保存餐食' : '保存修改' }}</button>
     </form>

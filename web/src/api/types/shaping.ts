@@ -1,3 +1,4 @@
+import type { CoachAgentDetails } from './coach'
 import type { WeightHistoryItem } from './plan'
 
 export type ShapeCircumference = 'waist_cm' | 'hip_cm' | 'chest_cm' | 'arm_cm' | 'thigh_cm'
@@ -61,14 +62,16 @@ export interface CoachExerciseReference {
   common_errors: Array<{ error: string; correction: string }>; regressions: string[]; progressions: string[]
   alternatives: Array<{ name: string; scene: string }>; demo_images: string[]; demo_video_url: string | null
 }
-export interface CoachAnswerResponse {
+export interface CoachAnswerResponse extends CoachAgentDetails {
   intent: 'medical' | 'substitution' | 'technique' | 'schedule'; answer: string; safety_note: string | null
   referenced_exercise_ids: number[]; references: CoachExerciseReference[]; used_llm: boolean; model_note: string
   referenced_source_keys: string[]; cited_source_keys: string[]; retrieval_method: string; retrieval_note: string | null
+  crag_status: 'not_run' | 'local_sufficient' | 'local_only' | 'consent_required' | 'missing_api_key' | 'tavily_unavailable' | 'no_web_results' | 'tavily_used'
+  crag_local_relevance: number; tavily_used: boolean
   embedding_model: string; vector_model_used: boolean
   knowledge_sources: Array<{ document_key: string; title: string; source_name: string; source_url: string | null
     source_published_at: string | null; retrieved_at: string; excerpt: string; retrieval_channels: string[]
-    bm25_score: number; vector_score: number | null }>
+    bm25_score: number | null; vector_score: number | null }>
 }
 export interface DietDayAdjustment {
   status: 'proposed' | 'adopted' | 'ignored' | 'needs_data' | 'professional_support' | 'data_conflict'

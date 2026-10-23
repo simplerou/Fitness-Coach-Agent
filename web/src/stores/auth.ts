@@ -1,8 +1,8 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiError } from '@/api/client'
-import { getCurrentAccount, loginAccount, logoutAccount, registerAccount } from '@/api/auth'
-import type { AuthUser, LoginPayload, RegisterPayload } from '@/api/types'
+import { deleteAccount, getCurrentAccount, loginAccount, logoutAccount, registerAccount } from '@/api/auth'
+import type { AuthUser, DeleteAccountPayload, LoginPayload, RegisterPayload } from '@/api/types'
 
 const AUTH_CHANGE_KEY = 'fitnessCoachAuthChanged'
 
@@ -51,6 +51,19 @@ export const useAuthStore = defineStore('auth', () => {
     broadcastAuthChange()
   }
 
+  async function removeAccount(payload: DeleteAccountPayload): Promise<void> {
+    const userId = user.value?.id
+    await deleteAccount(payload)
+    if (userId !== undefined) {
+      for (const prefix of ['fitnessCoachAvatar', 'fitnessCoachProfilePromptSkipped', 'fitnessCoachHomeLayout']) {
+        try { localStorage.removeItem(prefix + ':' + userId) } catch { /* Storage may be disabled. */ }
+      }
+    }
+    user.value = null
+    sessionError.value = null
+    broadcastAuthChange()
+  }
+
   function broadcastAuthChange(): void {
     try {
       localStorage.setItem(AUTH_CHANGE_KEY, String(Date.now()))
@@ -77,6 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     logout,
+    removeAccount,
     bindCrossTabSync,
   }
 })

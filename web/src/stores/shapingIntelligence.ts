@@ -1,6 +1,8 @@
 import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useAuthStore } from './auth'
+import { askCoachAgent } from '@/api/coach'
+import type { CoachContext, CoachTurn } from '@/api/types'
 import * as api from '@/api/shapingIntelligence'
 import type { CoachAnswerResponse, DietDayAdjustment, ShapeReportSnapshot, ShapingIntelligencePreferences, WeakPartAnalysis } from '@/api/types'
 
@@ -14,9 +16,11 @@ export const useShapingIntelligenceStore = defineStore('shaping-intelligence', (
   const reportTrigger = ref('')
   const loading = ref(false)
   const asking = ref(false)
+  let askVersion = 0
   const error = ref('')
 
   watch(() => auth.user?.id, () => {
+    askVersion += 1; asking.value = false
     weakAnalysis.value = null; coachAnswer.value = null; dietAdjustment.value = null; reports.value = []; error.value = ''
     Object.assign(preferences, { goal: 'whole_body', focus_groups: [], excluded_groups: [] })
   })
@@ -44,10 +48,19 @@ export const useShapingIntelligenceStore = defineStore('shaping-intelligence', (
     if (item) item.status = 'pending'
     return result.message
   }
-  async function ask(question: string, consent: boolean): Promise<void> {
+  async function ask(question: string, consent: boolean, context: CoachContext = { page: 'today', selected_date: null },
+    history: CoachTurn[] = []): Promise<CoachAnswerResponse | null> {
+    const version = ++askVersion
     asking.value = true
-    try { coachAnswer.value = await api.askCoach(question, consent) }
-    finally { asking.value = false }
+    try {
+      const answer = await askCoachAgent(question, consent, context, consent ? history : [])
+      if (version !== askVersion) return null
+      coachAnswer.value = answer
+      return answer
+    } catch (cause) {
+      if (version !== askVersion) return null
+      throw cause
+    } finally { if (version === askVersion) asking.value = false }
   }
   async function loadDietAdjustment(date: string): Promise<void> { dietAdjustment.value = await api.getDietAdjustment(date) }
   async function decideDiet(date: string, decision: 'adopted' | 'ignored'): Promise<string> {

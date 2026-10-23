@@ -8,3 +8,17 @@
 .coach-launcher{cursor:grab}.coach-launcher:active{cursor:grabbing}
 .coach-edge-tab{touch-action:none;cursor:grab}.coach-edge-tab:active{cursor:grabbing}.coach-edge-tab.is-top{border-radius:0 0 var(--r-md) var(--r-md)}.coach-edge-tab.is-bottom{border-radius:var(--r-md) var(--r-md) 0 0}
 .coach-launcher{white-space:nowrap;flex-shrink:0}
+.coach-launcher.is-icon-right{flex-direction:row-reverse}
+
+.coach-action-card{display:grid;gap:8px;margin-top:14px;padding:12px;border-radius:var(--r-sm);background:var(--brand-soft);color:var(--text-1)}
+.coach-action-card p{margin:0;font-size:var(--fs-sm);white-space:pre-wrap}
+.coach-action-card ul{margin:0;padding-left:18px;font-size:var(--fs-sm)}
+.coach-action-impact{font-weight:600}
+.coach-action-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.coach-action-buttons .button{min-height:36px;padding:6px 10px;font-size:var(--fs-sm)}
+
+.coach-user-message{white-space:pre-wrap;overflow-wrap:anywhere}
+.coach-pending-message{color:var(--text-2)}
+.coach-inline-error p{margin:0 0 8px}
+
+.coach-retrieval-status{display:block;margin-top:7px;color:var(--text-3);font-size:var(--fs-xs)}

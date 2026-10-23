@@ -64,7 +64,7 @@ async function search(): Promise<void> {
 async function viewDetail(food: DietFood): Promise<void> {
   selected.value = food
   const item = food as Record<string, unknown>
-  const code = item.code || item.food_code || item.food_id
+  const code = item.code || item.food_code || item.food_id || item.id
   if (!code) return
   loadingDetail.value = true
   try {

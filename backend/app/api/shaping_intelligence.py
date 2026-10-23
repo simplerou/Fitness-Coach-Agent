@@ -10,17 +10,15 @@ from sqlalchemy import select
 
 from ..database import (BodyProfileRecord, DietProfileRecord, SessionLocal, TrainingLogRecord,
                         TrainingPreferencesRecord, WeeklyPlanRecord)
-from ..models.shaping_intelligence import (DietDayAdjustmentRecord, MuscleGroupStatRecord, QaLogRecord,
+from ..models.shaping_intelligence import (DietDayAdjustmentRecord, MuscleGroupStatRecord,
     ReportSnapshotRecord, ShapingPreferenceRecord, WeakPartAdviceRecord)
-from ..models.training_intelligence import (ExerciseKnowledgeDocumentRecord, ExerciseLibraryRecord,
+from ..models.training_intelligence import (ExerciseLibraryRecord,
     RecoveryCheckinRecord, TrainingExerciseEntryRecord)
-from ..schemas.shaping_intelligence import (CoachQuestionInput, DietAdjustmentDecisionInput,
+from ..schemas.shaping_intelligence import (DietAdjustmentDecisionInput,
     ShapingPreferenceInput, WeakPartDecisionInput)
 from ..services.muscle_analysis import GOAL_FOCUS, build_addition, calculate_muscle_stats, identify_weak_parts
 from ..services.nutrition_link import calculate_day_nutrition
 from ..services.shape_report_service import build_shape_report, completed_period
-from ..services.exercise_knowledge import EMBEDDING_MODEL, retrieve_documents
-from ..services.shaping_agent import answer_coach_question, route_question
 
 
 def _preference(db, user_id: int) -> ShapingPreferenceRecord:
@@ -33,13 +31,6 @@ def _preference(db, user_id: int) -> ShapingPreferenceRecord:
 
 def _preference_dict(row: ShapingPreferenceRecord) -> dict:
     return {"goal": row.goal, "focus_groups": row.focus_groups, "excluded_groups": row.excluded_groups}
-
-
-def _exercise_reference(row: ExerciseLibraryRecord) -> dict:
-    return {"id": row.id, "slug": row.slug, "name": row.name, "category": row.category,
-            "target_muscles": row.target_muscles, "cues": row.cues, "common_errors": row.common_errors,
-            "regressions": row.regressions, "progressions": row.progressions, "alternatives": row.alternatives,
-            "demo_images": row.demo_images, "demo_video_url": row.demo_video_url}
 
 
 def create_shaping_intelligence_router(authenticate: Callable, week_start_for: Callable,
@@ -169,45 +160,6 @@ def create_shaping_intelligence_router(authenticate: Callable, week_start_for: C
             advice.resolved_at = None
             db.commit()
         return {"ok": True, "status": "pending", "message": "已撤销本次处理；由该建议加入的本周专项动作也已移除。"}
-
-    @router.post("/qa")
-    def coach_qa(payload: CoachQuestionInput, user_id: int = Depends(authenticate)) -> dict:
-        question = payload.question.strip()
-        with SessionLocal() as db:
-            exercises = db.scalars(select(ExerciseLibraryRecord).order_by(ExerciseLibraryRecord.id)).all()
-            plan = db.get(WeeklyPlanRecord, (user_id, week_start_for(date.today())))
-            knowledge_rows = db.scalars(select(ExerciseKnowledgeDocumentRecord).where(
-                ExerciseKnowledgeDocumentRecord.review_status == "approved")).all()
-            retrieved_documents, retrieval_note = ([], None)
-            if route_question(question) != "medical":
-                retrieved_documents, retrieval_note = retrieve_documents(
-                    question, knowledge_rows, allow_semantic=payload.privacy_consent, top_k=8)
-            result = answer_coach_question(question, exercises, plan.plan_data if plan else None,
-                retrieved_documents=retrieved_documents, retrieval_note=retrieval_note,
-                allow_llm=payload.privacy_consent)
-            answer = result["answer"]
-            db.add(QaLogRecord(user_id=user_id, question=question, answer=answer["answer"],
-                intent=result["intent"], exercise_ids=answer["referenced_exercise_ids"], used_llm=result["used_llm"]))
-            db.commit()
-            matches = {row.id: row for row in result["matches"]}
-            references = [_exercise_reference(matches[item]) for item in answer["referenced_exercise_ids"] if item in matches]
-            knowledge_sources = [{
-                "document_key": row["document_key"], "title": row["title"], "source_name": row["source_name"],
-                "source_url": row["source_url"], "source_published_at": row["source_published_at"],
-                "retrieved_at": row["source_retrieved_at"], "excerpt": row["body"][:520],
-                "retrieval_channels": row["retrieval_channels"], "bm25_score": row["bm25_score"],
-                "vector_score": row["vector_score"],
-            } for row in result["retrieved_documents"] if row["source_type"] == "external"]
-            cited_source_keys = answer.get("referenced_source_keys", [])
-        return {"intent": result["intent"], **answer, "used_llm": result["used_llm"], "references": references,
-                "knowledge_sources": knowledge_sources, "cited_source_keys": cited_source_keys,
-                "embedding_model": EMBEDDING_MODEL,
-                "vector_model_used": any("vector" in row["retrieval_channels"] for row in result["retrieved_documents"]),
-                "retrieval_method": ("BM25 + 向量 + RRF" if any("vector" in row["retrieval_channels"]
-                    for row in result["retrieved_documents"]) else "中文 BM25"),
-                "model_note": ("本次已检索动作库，并调用云端通义千问生成回答。" if result["used_llm"]
-                              else result.get("fallback_reason", "本次使用本地知识库检索与动作库规则回答。")),
-                "retrieval_note": retrieval_note}
 
     @router.get("/diet-adjustment")
     def get_diet_adjustment(selected_date: date = Query(alias="date"), user_id: int = Depends(authenticate)) -> dict:
