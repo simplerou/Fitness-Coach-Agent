@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
+from .api.coach import create_coach_router
 from .api.auth import create_auth_router
 from .api.safety import create_safety_router
 from .api.daily_signal import create_daily_signal_router
@@ -90,6 +91,7 @@ async def database_error_handler(_, __):
         content={"detail": "数据库暂时不可用。请确认 PostgreSQL 服务正在运行、移动硬盘已连接，然后重试。"},
     )
 
+app.include_router(create_coach_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_auth_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_safety_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_daily_signal_router(authenticated_user_id, lambda: SessionLocal()))

@@ -21,9 +21,7 @@ class WeakPartDecisionInput(BaseModel):
     decision: Literal["adopted", "ignored"]
 
 
-class CoachQuestionInput(BaseModel):
-    question: str = Field(min_length=2, max_length=500)
-    privacy_consent: bool = False
+from .coach import CoachQuestionInput  # 保持旧导入路径兼容
 
 
 class DietAdjustmentDecisionInput(BaseModel):

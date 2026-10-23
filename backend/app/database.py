@@ -44,6 +44,7 @@ TENANT_TABLES = (
 
 def initialize_database() -> None:
     """建表并为旧版单用户表预留账号归属列；实际归属在首个注册时迁移。"""
+    from .models import coach as _coach_models  # noqa: F401
     # 显式导入扩展模型，确保直接调用初始化函数时也注册全部表。
     from .models import shaping as _shaping_models  # noqa: F401
     from .models import shaping_intelligence as _shaping_intelligence_models  # noqa: F401

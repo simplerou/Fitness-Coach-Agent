@@ -27,3 +27,8 @@ export interface ErrorResponse {
   detail: string | null
 }
 
+export interface DeleteAccountPayload {
+  password: string
+  confirmation: '注销账号'
+}
+

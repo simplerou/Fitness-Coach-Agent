@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import TimePicker from '@/components/ui/TimePicker.vue'
 import { useDietStore } from '@/stores/diet'
 import { useNotice } from '@/composables/useNotice'
 import type { DietMeal, DietMealType } from '@/api/types'
@@ -59,7 +60,7 @@ defineExpose({ open: (meal?: DietMeal | null, mealType?: DietMealType) => { diet
         </div>
         <div v-if="diet.selectedFoods.length" class="diet-nutrition-summary"><template v-if="diet.selectedTotals.complete"><strong>本餐营养合计</strong><div><span>热量 <b>{{ Math.round(total.calories_kcal) }} kcal</b></span><span>蛋白质 <b>{{ total.protein_g.toFixed(1) }} g</b></span><span>碳水 <b>{{ total.carbs_g.toFixed(1) }} g</b></span><span>脂肪 <b>{{ total.fat_g.toFixed(1) }} g</b></span></div><small>根据所选克数和薄荷每 100 克数据换算，数值为估算值。</small></template><small v-else>本餐营养合计暂不可用；请移除没有营养数据的食物后查看自动汇总。</small></div>
       </section>
-      <label class="field"><span>进食时间（选填）</span><input v-model="diet.mealForm.eaten_at" type="time" /></label>
+      <div class="field"><span>进食时间（24小时制，选填）</span><TimePicker v-if="diet.mealDialogOpen" v-model="diet.mealForm.eaten_at" :aria-label="mealTypeLabel + '进食时间'" :default-time="{ breakfast: '08:00', lunch: '12:00', dinner: '18:00', snack: '15:00' }[diet.mealForm.meal_type]" /></div>
       <label class="field"><span>补充说明（选填）</span><input v-model="diet.mealForm.note" maxlength="240" placeholder="如外食、烹饪方式或用餐感受" /></label>
       <button class="button button-primary" type="submit">{{ diet.editingMealId == null ? '保存餐食' : '保存修改' }}</button>
     </form>

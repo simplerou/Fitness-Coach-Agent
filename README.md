@@ -78,7 +78,7 @@ npm run dev
 
 ## 当前版本边界
 
-塑型追踪已加入智能联动层：按近 4 周训练记录识别覆盖不足部位、动作库检索教练问答、训练/休息日饮食目标建议，以及自动补生成的周/月报告。数值计算由后端规则完成；通义千问只在用户授权后基于动作库上下文组织问答。完整数据流、表结构和验收步骤见 [塑型智能联动层升级与验收](../项目文档/版本设计/塑型智能联动层升级与验收.md)。
+塑型追踪已加入智能联动层：按近 4 周训练记录识别覆盖不足部位、动作库检索教练问答、训练/休息日饮食目标建议，以及自动补生成的周/月报告。数值计算由后端规则完成；AI 教练在用户授权后采用 ReAct 按需读取动作资料及训练、饮食和体测摘要，生成带依据的答复；目标和计划调整须由用户确认。完整数据流、表结构和验收步骤见 [塑型智能联动层升级与验收](../项目文档/版本设计/塑型智能联动层升级与验收.md)。
 
 这是本机流程演示，不是可供真实用户使用的健康产品。每日状态、训练日志、计划、身体档案和安全暂停按账号保存在本机 PostgreSQL；当日筛查状态保存在服务进程中，服务重启、切换账号或日期变化后需重新筛查。数据库首次注册时会把旧版单用户记录交给第一个注册账号；建议先备份数据库。密码以 PBKDF2 散列保存，会话使用签名 Cookie；健康资料未做应用层加密，暂不适合公开部署。应用不提供找回密码、账号删除或管理员控制台。只作功能演示时建议使用虚构数据；不要把计划当作医疗或个体化处方。
 
@@ -124,3 +124,17 @@ python backend/scripts/index_exercise_knowledge.py --force
 ```
 
 The app remains usable with BM25 if the Chroma index has not been built. On first startup, the backend creates/syncs the `exercise_knowledge_documents` table after seeding the exercise library. Existing installations can also apply `backend/migrations/20261020_exercise_knowledge_documents.sql` manually; ORM startup uses `create_all` as before. The SQL table stores document text and source metadata, while Chroma stores embeddings. Retrieved source cards show the source title, publisher, date, excerpt, and original link.
+
+
+## AI 教练 ReAct
+
+教练沿用项目 .env 中的 SHAPING_AGENT_MODEL（未设置时沿用 DIET_AGENT_MODEL）和 DASHSCOPE_API_KEY。勾选摘要授权后，可按需查询周计划、训练、恢复、饮食、身体变化与动作知识；每轮最多4次工具调用。工具仅能读取当前登录账号的数据。
+
+回复可准备今日饮食目标或下周训练调整草案。采纳前展示具体数值及影响范围，用户确认后重新校验源数据并保存；草案15分钟过期。未授权或模型失败时保留本地检索降级。
+
+后端新增表的建表SQL位于 backend/migrations/20261022_coach_action_drafts.sql；正常启动也会通过ORM创建该表。工具循环、数据查询、草案处理分别位于 backend/app/services/coach_react.py、coach_data.py、coach_actions.py。完整说明在工作区项目文档/技术说明/AI教练ReAct升级说明.md。
+
+隔离验证命令（项目根目录）：
+D:/Anaconda/envs/agent_env/python.exe -m unittest discover -s backend/tests -p test_coach_react.py -v
+
+隔离测试使用内存SQLite和脚本模型，不连接实际千问服务或开发数据库。

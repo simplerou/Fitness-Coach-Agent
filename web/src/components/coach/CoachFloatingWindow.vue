@@ -3,13 +3,26 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useShapingIntelligenceStore } from '@/stores/shapingIntelligence'
 import { useCoachWindow } from '@/composables/useCoachWindow'
-import { exerciseNameLabel } from '@/utils/exerciseLabels'
+import CoachResponseContent from './CoachResponseContent.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useDietStore } from '@/stores/diet'
+import { localDateString } from '@/utils/date'
+import type { CoachContext, CoachTurn } from '@/api/types'
 import type { CoachAnswerResponse } from '@/api/types'
 
-type ChatEntry = { id: number; question: string; response: CoachAnswerResponse }
+type ChatEntry = {
+  id: number
+  question: string
+  context: CoachContext
+  response: CoachAnswerResponse | null
+  pending: boolean
+  error: string
+}
 type DockSide = 'left' | 'right' | 'top' | 'bottom'
 
 const intelligence = useShapingIntelligenceStore()
+const auth = useAuthStore()
+const diet = useDietStore()
 const route = useRoute()
 const coach = useCoachWindow()
 const panel = ref<HTMLElement | null>(null)
@@ -20,12 +33,12 @@ const question = ref('')
 const consent = ref(false)
 const collapsed = ref(false)
 const launcherCollapsed = ref(false)
+const launcherIconAtRight = ref(false)
 const dockSide = ref<DockSide>('right')
 const edgePosition = ref({ x: window.innerWidth - 48, y: Math.round(window.innerHeight * 0.48) })
 const position = ref<{ x: number; y: number } | null>(null)
 const launcherPosition = ref<{ x: number; y: number } | null>(null)
 const messages = ref<ChatEntry[]>([])
-const error = ref('')
 let messageId = 0
 let dragOffset = { x: 0, y: 0 }
 let dragOrigin = { x: 0, y: 0 }
@@ -44,7 +57,8 @@ const transformOrigin = computed(() => dockSide.value === 'left' ? 'left center'
 const panelStyle = computed(() => position.value ? { left:`${position.value.x}px`,top:`${position.value.y}px`,right:'auto',bottom:'auto',transformOrigin:transformOrigin.value } : undefined)
 const launcherStyle = computed(() => launcherPosition.value ? { left:`${launcherPosition.value.x}px`,top:`${launcherPosition.value.y}px`,right:'auto',bottom:'auto',transformOrigin:transformOrigin.value } : { transformOrigin:transformOrigin.value })
 const edgeTabStyle = computed(() => ({ left:`${edgePosition.value.x}px`,top:`${edgePosition.value.y}px`,right:'auto',bottom:'auto',transformOrigin:transformOrigin.value }))
-const examples = ['俯卧撑怎么呼吸和发力？','器械被占用时怎样选择替代动作？','结合我的本周计划，训练该怎么安排？']
+const examples = ['结合最近训练和恢复，我本周表现怎么样？','按今天的安排生成饮食目标草案','看看我近八周的体重和围度变化']
+watch(() => auth.user?.id, () => { messages.value = []; question.value = ''; consent.value = false })
 
 watch(() => coach.suggestedQuestion.value, (value) => {
   if (value) { question.value = value; coach.suggestedQuestion.value = ''; void focusQuestion() }
@@ -55,17 +69,46 @@ watch(() => route.fullPath, () => {
 })
 
 async function focusQuestion(): Promise<void> { await nextTick(); textarea.value?.focus() }
+async function scrollConversation(): Promise<void> {
+  await nextTick()
+  const conversation = panel.value?.querySelector('.coach-conversation')
+  conversation?.scrollTo({ top: conversation.scrollHeight, behavior: 'auto' })
+}
+async function sendEntry(entry: ChatEntry): Promise<void> {
+  if (intelligence.asking) return
+  entry.pending = true
+  entry.error = ''
+  const history: CoachTurn[] = messages.value
+    .filter(previous => previous.id < entry.id && previous.response !== null)
+    .slice(-3)
+    .flatMap(previous => [
+      { role: 'user' as const, content: previous.question.slice(0, 1200) },
+      { role: 'assistant' as const, content: previous.response!.answer.slice(0, 1200) },
+    ])
+  void scrollConversation()
+  try {
+    const response = await intelligence.ask(entry.question, consent.value, entry.context, history)
+    const current = messages.value.find(message => message.id === entry.id)
+    if (response && current) current.response = response
+  } catch (cause) {
+    const current = messages.value.find(message => message.id === entry.id)
+    if (current) current.error = cause instanceof Error ? cause.message : '教练问答暂时不可用。'
+  } finally {
+    const current = messages.value.find(message => message.id === entry.id)
+    if (current) current.pending = false
+    void scrollConversation()
+  }
+}
 async function submit(): Promise<void> {
   const value = question.value.trim()
   if (!value || intelligence.asking) return
-  error.value = ''
-  try {
-    await intelligence.ask(value, consent.value)
-    if (intelligence.coachAnswer) messages.value.push({ id:++messageId, question:value, response:intelligence.coachAnswer })
-    question.value = ''
-    await nextTick()
-    panel.value?.querySelector('.coach-conversation')?.scrollTo({ top:10_000, behavior:'smooth' })
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '教练问答暂时不可用。' }
+  const page = String(route.name) in pageLabels ? String(route.name) as CoachContext['page'] : 'today'
+  const routeDate = typeof route.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.date) ? route.query.date : null
+  const selected_date = routeDate || (page === 'diet' ? diet.selectedDate : localDateString())
+  messages.value.push({ id: ++messageId, question: value, context: { page, selected_date }, response: null, pending: true, error: '' })
+  if (messages.value.length > 20) messages.value.splice(0, messages.value.length - 20)
+  question.value = ''
+  await sendEntry(messages.value[messages.value.length - 1]!)
 }
 function useExample(value: string): void { question.value = value; void focusQuestion() }
 function collapse(): void {
@@ -89,6 +132,7 @@ function expand(): void {
   void nextTick(async () => { if (panel.value) await animateFromDock(panel.value) })
 }
 function expandLauncher(): void {
+  launcherIconAtRight.value = dockSide.value === 'right'
   launcherCollapsed.value = false
   const width = Math.min(184,window.innerWidth - 16)
   launcherPosition.value = { x:Math.max(0,Math.min(window.innerWidth - width,edgePosition.value.x)), y:Math.max(0,Math.min(window.innerHeight - 56,edgePosition.value.y)) }
@@ -174,6 +218,7 @@ function move(event: MouseEvent): void {
     edgeExpandedByDrag = true
     edgeDragReady = false
     if (draggingLauncher) {
+      launcherIconAtRight.value = dockSide.value === 'right'
       launcherCollapsed.value = false
       const width = Math.min(184,window.innerWidth-16)
       launcherPosition.value = { x:Math.max(0,Math.min(window.innerWidth-width,edgePosition.value.x)),y:Math.max(0,Math.min(window.innerHeight-56,edgePosition.value.y)) }
@@ -183,29 +228,40 @@ function move(event: MouseEvent): void {
       const height = Math.min(650,window.innerHeight-96)
       position.value = { x:Math.max(0,Math.min(window.innerWidth-width,edgePosition.value.x)),y:Math.max(64,Math.min(window.innerHeight-height,edgePosition.value.y)) }
     }
-    void nextTick(async () => {
+    void nextTick(() => {
       const element = draggingLauncher ? launcher.value : panel.value
       if (!dragging || !element) return
-      await animateFromDock(element)
-      if (!dragging) return
       const rect = element.getBoundingClientRect()
-      dragOffset = { x:lastPointer.x-rect.left,y:lastPointer.y-rect.top }
+      // 拖动与展开动画同时进行，短拉后松手也保留已经展开的状态。
+      dragOffset = { x:dragOrigin.x-rect.left,y:dragOrigin.y-rect.top }
+      if (draggingLauncher && dockSide.value === 'right') {
+        // 右侧展开时按钮向左增长，仍以图标处的抓取点跟随鼠标。
+        const icon = element.querySelector('svg')?.getBoundingClientRect()
+        if (icon) dragOffset.x = Math.max(0,Math.min(element.offsetWidth,
+          icon.left + icon.width / 2 - rect.left + dragOrigin.x - edgePosition.value.x - 24))
+      }
       edgeDragReady = true
+      move(new MouseEvent('mousemove', { clientX:lastPointer.x,clientY:lastPointer.y }))
+      void animateFromDock(element, draggingLauncher && dockSide.value === 'right'
+        ? `${dragOffset.x}px ${dragOffset.y}px` : undefined)
     })
     return
   }
   if (!edgeDragReady) return
   const element = draggingLauncher ? launcher.value : panel.value
   if (!element) return
-  const rect = element.getBoundingClientRect()
-  const nextPosition = { x:Math.max(0,Math.min(window.innerWidth-rect.width,event.clientX-dragOffset.x)), y:Math.max(0,Math.min(window.innerHeight-rect.height,event.clientY-dragOffset.y)) }
+  // 动画中的缩放不应改变拖动边界，使用实际布局尺寸。
+  const width = element.offsetWidth
+  const height = element.offsetHeight
+  const nextPosition = { x:Math.max(0,Math.min(window.innerWidth-width,event.clientX-dragOffset.x)), y:Math.max(0,Math.min(window.innerHeight-height,event.clientY-dragOffset.y)) }
   if (draggingLauncher) launcherPosition.value = nextPosition
-  else position.value = { x:nextPosition.x,y:Math.max(64,Math.min(window.innerHeight-80,event.clientY-dragOffset.y)) }
+  else position.value = { x:nextPosition.x,y:Math.max(Math.min(64,Math.max(0,window.innerHeight-height)),nextPosition.y) }
 }
 function shouldAnimateMorph(): boolean { return !window.matchMedia('(prefers-reduced-motion: reduce)').matches }
-async function animateFromDock(element: HTMLElement): Promise<void> {
+async function animateFromDock(element: HTMLElement, origin?: string): Promise<void> {
   if (!shouldAnimateMorph()) return
-  const animation = element.animate([{ transform:'scale(.12)',opacity:0 },{ transform:'scale(1)',opacity:1 }],{ duration:600,easing:'cubic-bezier(.2,.8,.2,1)' })
+  const anchor = origin ? { transformOrigin:origin } : {}
+  const animation = element.animate([{ ...anchor,transform:'scale(.12)',opacity:0 },{ ...anchor,transform:'scale(1)',opacity:1 }],{ duration:600,easing:'cubic-bezier(.2,.8,.2,1)' })
   await animation.finished.catch(() => undefined)
 }
 async function animateIntoDock(element: HTMLElement): Promise<void> {
@@ -220,6 +276,7 @@ function endDrag(): void {
   }
   const wasDraggingLauncher = draggingLauncher
   const wasDraggingFromEdge = draggingFromEdge
+  const wasExpandedFromEdge = draggingFromEdge && edgeExpandedByDrag
   dragging = false
   draggingLauncher = false
   draggingFromEdge = false
@@ -227,6 +284,8 @@ function endDrag(): void {
   edgeExpandedByDrag = false
   window.removeEventListener('mousemove',move, true)
   window.removeEventListener('mouseup',endDrag, true)
+  // 从停靠图标拉出的这次手势只负责展开，下次拖向边缘才重新吸附。
+  if (wasExpandedFromEdge) return
   if (wasDraggingLauncher) {
     if (movedDuringDrag && launcher.value && setEdgePosition(launcher.value.getBoundingClientRect(),wasDraggingFromEdge?20:64)) {
       const currentLauncher = launcher.value
@@ -268,7 +327,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown',keydown);window.r
 
 <template>
   <Teleport to="body">
-    <button v-if="!coach.open.value && !launcherCollapsed" key="coach-launcher" ref="launcher" class="coach-launcher" :style="launcherStyle" type="button" aria-label="打开 AI 教练" title="拖动移动，点击打开" @mousedown="startDrag($event, 'launcher')" @click="openFromLauncher">
+    <button v-if="!coach.open.value && !launcherCollapsed" key="coach-launcher" ref="launcher" class="coach-launcher" :class="{ 'is-icon-right':launcherIconAtRight }" :style="launcherStyle" type="button" aria-label="打开 AI 教练" title="拖动移动，点击打开" @mousedown="startDrag($event, 'launcher')" @click="openFromLauncher">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1l2.8 2.5c.5.4 1.2.1 1.2-.5v-2h1a4 4 0 0 0 4-4v-3a7 7 0 0 0-7-7Z"/><path d="M9 10h.01M15 10h.01M9.5 13.5c1.5 1 3.5 1 5 0"/></svg><span>AI 教练</span>
     </button>
     <button v-else-if="collapsed || (!coach.open.value && launcherCollapsed)" key="coach-edge-tab" ref="edgeTab" class="coach-edge-tab" :class="`is-${dockSide}`" :style="edgeTabStyle" type="button" :aria-label="coach.open.value ? '按住并拖动展开 AI 教练窗口' : '按住并拖动展开 AI 教练按钮'" @mousedown="startEdgeDrag" @keydown.enter.prevent="expandEdgeFromKeyboard" @keydown.space.prevent="expandEdgeFromKeyboard">
@@ -276,21 +335,22 @@ onBeforeUnmount(() => { document.removeEventListener('keydown',keydown);window.r
     </button>
     <aside v-else-if="coach.open.value" key="coach-panel" ref="panel" class="coach-floating-window" :style="panelStyle" role="dialog" aria-label="AI 教练问答" aria-modal="false">
       <header class="coach-window-header" @mousedown="startDrag">
-        <div class="coach-window-title"><span class="coach-window-drag-handle" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01"/></svg></span><span class="coach-window-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1l2.8 2.5c.5.4 1.2.1 1.2-.5v-2h1a4 4 0 0 0 4-4v-3a7 7 0 0 0-7-7Z"/></svg></span><div><b>AI 教练</b><small>{{ contextLabel }}上下文 · 动作资料检索</small></div></div>
+        <div class="coach-window-title"><span class="coach-window-drag-handle" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01"/></svg></span><span class="coach-window-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1l2.8 2.5c.5.4 1.2.1 1.2-.5v-2h1a4 4 0 0 0 4-4v-3a7 7 0 0 0-7-7Z"/></svg></span><div><b>AI 教练</b><small>{{ contextLabel }}上下文 · 训练与饮食助手</small></div></div>
         <div class="coach-window-actions"><button type="button" title="缩进页面边缘" aria-label="缩进页面边缘" @click="collapse"><svg viewBox="0 0 20 20"><path d="M5 10h10"/></svg></button><button type="button" title="关闭" aria-label="关闭 AI 教练" @click="closeCoachFromPanel"><svg viewBox="0 0 20 20"><path d="m6 6 8 8m0-8-8 8"/></svg></button></div>
       </header>
       <div class="coach-conversation">
-        <article class="coach-welcome"><b>你好，我是青禾 AI 教练</b><p>可以询问动作要领、同肌群替代动作和训练安排。涉及疼痛、受伤或疾病时不会提供诊断。</p><div><button v-for="item in examples" :key="item" type="button" @click="useExample(item)">{{item}}</button></div></article>
+        <article class="coach-welcome"><b>你好，我是青禾 AI 教练</b><p>可以查询计划、训练与恢复、饮食和身体变化，也可以准备调整草案。涉及保存的操作会先请你确认；疼痛或伤病问题不提供诊断。</p><div><button v-for="item in examples" :key="item" type="button" @click="useExample(item)">{{item}}</button></div></article>
         <template v-for="entry in messages" :key="entry.id">
           <p class="coach-user-message">{{entry.question}}</p>
-          <article class="coach-agent-message"><div class="coach-answer-kind"><span>{{entry.response.used_llm?'云端 Agent':'本地检索'}}</span><small>{{entry.response.model_note}}</small></div><p>{{entry.response.answer}}</p><p v-if="entry.response.safety_note" class="coach-safety-note">{{entry.response.safety_note}}</p>
-            <div v-if="entry.response.references.length" class="coach-related-actions"><b>相关动作</b><div><span v-for="item in entry.response.references" :key="item.id">{{exerciseNameLabel(item.name)}}</span></div></div>
-            <details v-if="entry.response.knowledge_sources.length" class="coach-sources"><summary>查看 {{entry.response.knowledge_sources.length}} 条参考资料</summary><article v-for="source in entry.response.knowledge_sources" :key="source.document_key"><b>{{source.title}}</b><small>{{source.source_name}}<template v-if="source.source_published_at"> · {{source.source_published_at}}</template></small><p>{{source.excerpt}}</p><a v-if="source.source_url" :href="source.source_url" target="_blank" rel="noopener noreferrer">查看来源</a></article></details>
-          </article>
+          <CoachResponseContent v-if="entry.response" :response="entry.response" />
+          <p v-else-if="entry.pending" class="coach-agent-message coach-pending-message" role="status" aria-live="polite">正在查询并整理回答…</p>
+          <div v-else-if="entry.error" class="coach-inline-error" role="alert">
+            <p>{{ entry.error }}</p>
+            <button class="button secondary" type="button" :disabled="intelligence.asking" @click="sendEntry(entry)">重新发送</button>
+          </div>
         </template>
-        <p v-if="error" class="coach-inline-error" role="alert">{{error}}</p>
       </div>
-      <form class="coach-composer" @submit.prevent="submit"><label><span class="sr-only">向 AI 教练提问</span><textarea ref="textarea" v-model="question" rows="2" maxlength="500" placeholder="询问动作、替代方案或训练安排…" @keydown.enter.exact.prevent="submit"/></label><div><label class="coach-consent"><input v-model="consent" type="checkbox"><span>允许调用云端模型</span></label><button class="coach-send" type="submit" :disabled="intelligence.asking||!question.trim()"><span>{{intelligence.asking?'检索中':'发送'}}</span><svg viewBox="0 0 20 20"><path d="m4 10 11-6-3 12-2.5-4L4 10Zm5.5 2L15 4"/></svg></button></div><small>未授权时使用本地检索；不会发送账号名。Ctrl + Shift + K 快速打开。</small></form>
+      <form class="coach-composer" @submit.prevent="submit"><label><span class="sr-only">向 AI 教练提问</span><textarea ref="textarea" v-model="question" rows="2" maxlength="500" placeholder="询问动作、替代方案或训练安排…" @keydown.enter.exact.prevent="submit"/></label><div><label class="coach-consent"><input v-model="consent" type="checkbox"><span>允许云端模型使用本次所需摘要</span></label><button class="coach-send" type="submit" :disabled="intelligence.asking||!question.trim()"><span>{{intelligence.asking?'查询处理中':'发送'}}</span><svg viewBox="0 0 20 20"><path d="m4 10 11-6-3 12-2.5-4L4 10Zm5.5 2L15 4"/></svg></button></div><small>勾选后会发送本次问题、最近3轮对话及按需查询的训练、饮食或体测摘要；不含账号名。未勾选时使用本地检索。</small></form>
     </aside>
   </Teleport>
 </template>

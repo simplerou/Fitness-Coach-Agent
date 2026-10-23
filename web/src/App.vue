@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import AuthGate from '@/components/auth/AuthGate.vue'
+import LandingView from '@/views/LandingView.vue'
 import NoticeModal from '@/components/common/NoticeModal.vue'
 import TopBar from '@/components/layout/TopBar.vue'
 import TabBar from '@/components/layout/TabBar.vue'
@@ -23,11 +24,15 @@ const router = useRouter()
 let stopCrossTabSync: (() => void) | null = null
 let onboardingCheckedFor: number | null = null
 const sidebarOpen = ref(false)
+const authMode = ref<'login' | 'register' | null>(null)
 const previousVisibilityHandler = document.onvisibilitychange
 document.onvisibilitychange = () => { if (!document.hidden) { if (auth.isAuthenticated) void safety.refreshToday(); shaping.refreshReminderDate() } }
 watch(() => auth.isAuthenticated, (authenticated) => {
-  document.body.classList.toggle('auth-open', !authenticated)
-}, { immediate: true })
+  if (authenticated) authMode.value = null
+})
+watch(authMode, (mode) => {
+  document.body.classList.toggle('auth-open', mode !== null)
+})
 watch(() => [auth.initialized, auth.user?.id] as const, async ([initialized, userId]) => {
   if (!initialized || !userId || onboardingCheckedFor === userId) return
   onboardingCheckedFor = userId
@@ -51,7 +56,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-frame">
+  <div :class="auth.isAuthenticated ? 'app-frame' : 'public-frame'">
     <template v-if="auth.isAuthenticated">
       <AppSidebar :open="sidebarOpen" @close="sidebarOpen = false" />
       <div class="app-workspace">
@@ -63,7 +68,10 @@ onBeforeUnmount(() => {
       <TabBar />
       <CoachFloatingWindow />
     </template>
-    <AuthGate v-if="!auth.isAuthenticated" />
+    <template v-if="!auth.isAuthenticated">
+      <LandingView @authenticate="authMode = $event" />
+      <AuthGate v-if="authMode" :initial-mode="authMode" @close="authMode = null" />
+    </template>
     <NoticeModal />
   </div>
 </template>

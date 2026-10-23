@@ -1,11 +1,11 @@
-"""参考课件 Router + Skill 与 LangGraph 的受控塑形教练 Agent。"""
+"""保留规则分流与本地降级；授权后由 LangGraph ReAct 循环调用受控业务工具。"""
 from __future__ import annotations
 
 import json
 import logging
 import os
 import re
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,16 +17,10 @@ class CoachAnswer(BaseModel):
     safety_note: str | None = Field(default=None, max_length=300)
     referenced_exercise_ids: list[int] = Field(default_factory=list, max_length=4)
     referenced_source_keys: list[str] = Field(default_factory=list, max_length=6)
+    action_ids: list[str] = Field(default_factory=list, max_length=2)
 
 
-class CoachState(TypedDict, total=False):
-    question: str
-    intent: str
-    context: dict[str, Any]
-    result: CoachAnswer
-
-
-MEDICAL_TERMS = ("受伤", "骨折", "诊断", "治疗", "肿胀", "锐痛", "胸痛", "头晕", "疾病", "康复")
+MEDICAL_TERMS = ("疼痛", "关节痛", "膝盖疼", "胸闷", "受伤", "骨折", "诊断", "治疗", "肿胀", "锐痛", "胸痛", "头晕", "疾病", "康复")
 
 
 def route_question(question: str) -> Literal["medical", "substitution", "technique", "schedule"]:
@@ -70,7 +64,9 @@ def _fallback_answer(intent: str, matches: list[Any], plan_context: dict[str, An
 
 def answer_coach_question(question: str, exercises: list[Any], plan_context: dict[str, Any] | None = None,
                           retrieved_documents: list[dict[str, Any]] | None = None,
-                          retrieval_note: str | None = None, allow_llm: bool = False) -> dict[str, Any]:
+                          retrieval_note: str | None = None, allow_llm: bool = False,
+                          toolbox=None, history: list[dict] | None = None, page_context: dict | None = None,
+                          recovery_stop: bool = False) -> dict[str, Any]:
     intent = route_question(question)
     retrieved_documents = retrieved_documents or []
     exercise_ids = {row.get("exercise_id") for row in retrieved_documents if row.get("source_type") == "exercise"}
@@ -80,6 +76,11 @@ def answer_coach_question(question: str, exercises: list[Any], plan_context: dic
                              safety_note="若症状明显、持续或加重，请及时就医。")
         return {"intent": intent, "answer": result.model_dump(), "used_llm": False, "matches": [],
                 "retrieved_documents": [], "fallback_reason": "问题涉及疼痛、受伤或疾病，本次按安全规则跳过云端模型。"}
+    if recovery_stop or (toolbox and toolbox.blocked):
+        result = CoachAnswer(answer="最近一次恢复打卡存在关节疼痛、锐痛或肿胀等风险信号，暂不提供训练安排或进阶建议。请停止引发不适的动作，并咨询专业人士。",
+                             safety_note="若症状明显、持续或加重，请及时就医。")
+        return {"intent": intent, "answer": result.model_dump(), "used_llm": False, "matches": [],
+                "retrieved_documents": [], "fallback_reason": "根据最近恢复记录执行安全提示，未调用云端模型。"}
     if not matches and not any(row.get("source_type") == "external" for row in retrieved_documents):
         matches = retrieve_exercises(question, exercises)
     fallback = _fallback_answer(intent, matches, plan_context)
@@ -99,9 +100,7 @@ def answer_coach_question(question: str, exercises: list[Any], plan_context: dic
                 "retrieved_documents": retrieved_documents,
                 "fallback_reason": "后端未读取到 DASHSCOPE_API_KEY，请检查项目根目录 .env 并重启后端。"}
     try:
-        from langchain_core.messages import HumanMessage, SystemMessage
         from langchain_openai import ChatOpenAI
-        from langgraph.graph import END, START, StateGraph
 
         context = {"exercises": [{"id": row.id, "name": row.name, "category": row.category,
                     "target_muscles": row.target_muscles, "cues": row.cues, "common_errors": row.common_errors,
@@ -112,26 +111,29 @@ def answer_coach_question(question: str, exercises: list[Any], plan_context: dic
                     for row in retrieved_documents], "plan": plan_context or {}}
         model = ChatOpenAI(model=os.getenv("SHAPING_AGENT_MODEL", os.getenv("DIET_AGENT_MODEL", "qwen-plus")),
             api_key=api_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1", temperature=0.1,
-            timeout=40, max_retries=1).with_structured_output(CoachAnswer, method="function_calling")
+            timeout=25, max_retries=0, max_tokens=1800)
 
-        def router_node(state: CoachState) -> dict[str, Any]: return {"intent": route_question(state["question"])}
-        def skill_node(state: CoachState) -> dict[str, Any]:
-            prompt = """你是健身动作教练。只能使用给定动作库、已审核知识资料与计划上下文回答，不得补写资料中没有的动作细节。
-替代动作必须保持目标肌群一致，并区分退阶/进阶。安全风险先提示；医疗问题不诊断。回答简洁、具体、可执行。
-referenced_exercise_ids 只能取动作库已有 id；referenced_source_keys 只能取检索资料已有 document_key。
-有使用外部资料时在回答中简短说明资料来源；资料未提及时明确说依据不足，不可把资料范围扩大。"""
-            output = model.invoke([SystemMessage(content=prompt), HumanMessage(content=json.dumps({"question": state["question"], "intent": state["intent"], **state["context"]}, ensure_ascii=False))])
-            return {"result": output if isinstance(output, CoachAnswer) else CoachAnswer.model_validate(output)}
-        workflow = StateGraph(CoachState)
-        workflow.add_node("router", router_node); workflow.add_node("skill", skill_node)
-        workflow.add_edge(START, "router"); workflow.add_edge("router", "skill"); workflow.add_edge("skill", END)
-        state = workflow.compile().invoke({"question": question, "context": context})
+        from .coach_react import run_react
+        from .coach_tools import CoachToolbox
+        if toolbox is None:
+            # 保持旧服务调用兼容；正式HTTP入口使用绑定登录账号的工具箱。
+            class NoTools:
+                trace = []
+                proposals = {}
+                def definitions(self): return []
+            toolbox = NoTools()
+        context["page_context"] = page_context or {}
+        result, trace, stop_reason = run_react(model, toolbox, context, question, history or [], CoachAnswer)
+        if isinstance(toolbox, CoachToolbox):
+            retrieved_documents = list(toolbox.documents.values())
+            matches = list({row.id: row for row in matches + [
+                toolbox.exercises[key] for key in toolbox.exercise_ids if key in toolbox.exercises]}.values())
         valid_ids = {row.id for row in matches}
         valid_source_keys = {row["document_key"] for row in retrieved_documents}
-        result = state["result"]
         result.referenced_exercise_ids = [item for item in result.referenced_exercise_ids if item in valid_ids]
         result.referenced_source_keys = [item for item in result.referenced_source_keys if item in valid_source_keys]
-        return {"intent": intent, "answer": result.model_dump(), "used_llm": True, "matches": matches,
+        result.action_ids = list(dict.fromkeys(key for key in result.action_ids if key in toolbox.proposals))[:2]
+        return {"tool_trace": trace, "stop_reason": stop_reason, "intent": intent, "answer": result.model_dump(), "used_llm": True, "matches": matches,
                 "retrieved_documents": retrieved_documents,
                 "fallback_reason": None}
     except Exception as exc:
@@ -153,6 +155,6 @@ referenced_exercise_ids 只能取动作库已有 id；referenced_source_keys 只
             reason = "云端模型拒绝了请求，请核对 SHAPING_AGENT_MODEL 配置和模型支持情况。"
         else:
             reason = f"云端模型调用失败（{error_type}），本次已回退到动作库规则回答。"
-        return {"intent": intent, "answer": fallback.model_dump(), "used_llm": False, "matches": matches,
-                "retrieved_documents": retrieved_documents,
-                "fallback_reason": reason}
+        return {"tool_trace": getattr(toolbox, "trace", []), "stop_reason": "error",
+                "intent": intent, "answer": fallback.model_dump(), "used_llm": False, "matches": matches,
+                "retrieved_documents": retrieved_documents, "fallback_reason": reason}

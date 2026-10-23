@@ -21,6 +21,7 @@ defineEmits<{ adopt: []; ignore: []; undo: [] }>()
       <div><dt>依据</dt><dd>{{ evidence }}</dd></div>
       <div><dt>预期影响</dt><dd>{{ impact }}</dd></div>
     </dl>
+    <slot />
     <div class="advice-card-actions">
       <template v-if="!status || status === 'pending'">
         <button class="button button-primary" :disabled="loading" @click="$emit('adopt')">采纳</button>

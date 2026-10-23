@@ -1,3 +1,4 @@
+import type { CoachAgentDetails } from './coach'
 import type { WeightHistoryItem } from './plan'
 
 export type ShapeCircumference = 'waist_cm' | 'hip_cm' | 'chest_cm' | 'arm_cm' | 'thigh_cm'
@@ -61,7 +62,7 @@ export interface CoachExerciseReference {
   common_errors: Array<{ error: string; correction: string }>; regressions: string[]; progressions: string[]
   alternatives: Array<{ name: string; scene: string }>; demo_images: string[]; demo_video_url: string | null
 }
-export interface CoachAnswerResponse {
+export interface CoachAnswerResponse extends CoachAgentDetails {
   intent: 'medical' | 'substitution' | 'technique' | 'schedule'; answer: string; safety_note: string | null
   referenced_exercise_ids: number[]; references: CoachExerciseReference[]; used_llm: boolean; model_note: string
   referenced_source_keys: string[]; cited_source_keys: string[]; retrieval_method: string; retrieval_note: string | null

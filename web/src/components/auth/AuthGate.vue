@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 
 type AuthMode = 'login' | 'register'
 type PasswordField = 'password' | 'password_confirm'
 
+const props = defineProps<{ initialMode?: AuthMode }>()
+const emit = defineEmits<{ close: [] }>()
+const dialog = ref<HTMLDialogElement | null>(null)
 const auth = useAuthStore()
-const mode = ref<AuthMode>('login')
+const mode = ref<AuthMode>(props.initialMode ?? 'login')
 const loading = ref(false)
 const formError = ref('')
 const usernameError = ref('')
@@ -20,6 +23,9 @@ const visible = reactive<Record<PasswordField, boolean>>({
   password_confirm: false,
 })
 const fields = reactive({ username: '', display_name: '', password: '', password_confirm: '' })
+onMounted(() => { dialog.value?.showModal(); usernameInput.value?.focus() })
+onBeforeUnmount(() => dialog.value?.close())
+
 const isRegister = computed(() => mode.value === 'register')
 const title = computed(() => isRegister.value ? '创建你的训练账号' : '欢迎回来')
 const description = computed(() => isRegister.value
@@ -134,8 +140,9 @@ function clearPasswordErrors(field: PasswordField): void {
 </script>
 
 <template>
-  <div class="modal-backdrop auth-backdrop" role="presentation">
-    <section class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-description">
+  <dialog ref="dialog" class="landing-auth-dialog" aria-labelledby="auth-title" aria-describedby="auth-description" @cancel.prevent="emit('close')" @click.self="emit('close')">
+    <section class="auth-modal">
+      <button class="auth-close" type="button" aria-label="关闭登录注册，返回产品首页" @click="emit('close')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       <div class="auth-brand-mark" aria-hidden="true">禾</div>
       <p class="eyebrow">FITNESS COACH</p>
       <h2 id="auth-title">{{ title }}</h2>
@@ -225,5 +232,5 @@ function clearPasswordErrors(field: PasswordField): void {
       </div>
       <p class="fine-print">本机演示账号。密码以不可逆散列形式保存；忘记密码时目前需由管理员处理数据库账号。</p>
     </section>
-  </div>
+  </dialog>
 </template>
