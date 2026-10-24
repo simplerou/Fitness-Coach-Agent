@@ -1,159 +1,112 @@
-# fitness-coach-agent
+# 个性化健身运动规划智能体
 
-个性化健身运动规划智能体。前端使用 Vue 3、TypeScript、Vite、Pinia 和 Vue Router；后端使用 FastAPI 与本机 PostgreSQL。
+面向个人训练与日常记录的本机 Web 应用。用户可以管理训练计划、记录饮食与身体变化，并在明确授权后使用 AI 教练获得基于项目知识库和个人业务摘要的答复。
 
-## 当前功能（V1.2.0–V1.9 功能调整中）
+## 功能概览
 
-- 每日安全筛查仅在本机自然日内有效；未完成或命中症状时不提供训练建议
-- 安全暂停状态保存在 PostgreSQL，跨页面刷新、跨日和服务重启持续有效；不保存具体症状答案
-- 训练日可手动记录主观状态、睡眠和静息心率；状态较差时给出保守提示，计划休息日无需提交每日状态
-- 按年龄段、身体档案基线和训练目标、训练星期、经验、器械与时长生成周计划提示；支持档案修改/删除及按日期查看体重历史，并在首页显示当天会话或休息日
-- 注册登录后进入“我的”用户中心；身体档案按账号保存，首次建档可填写或跳过，之后可随时补充、修改或删除。账号仅供本机演示，不适合公开部署。
-- 保存最近一次成功生成的计划设置，并在计划快照中保留生成当时的参数
-- 按周回看状态和训练日志，并汇总日志条数、完成情况与平均 RPE（同时显示有效 RPE 条数）。
-- 历史查询限制在本地档案起始日及之后；已有数据库以最早一条状态或训练记录作为起始日，新数据库以首次建档日为起始日。
-- 记录缺失明确显示“未记录”；不把未记录推断为休息或状态正常。
-- 每日状态与训练日志保存在 PostgreSQL，服务重启后仍可查看。
-- 历史周计划可在安全筛查通过后查看；历史记录只读，不会改变今日计划摘要。
-- 服务重启或本地日期变化后需重新筛查；解除安全暂停后也需重新筛查。本周最新计划保存在 PostgreSQL。
-- 页面生产构建后由 FastAPI 从 `web/dist` 同源托管；开发时可使用 Vite 热更新
-- 塑型追踪：五项围度与测量位置图示、每个部位的双周复测提醒、实测体脂率/骨骼肌趋势、目标与里程碑、三视角照片时间线及历史滑动对比。体重复用身体档案记录，不把 BMI 当成实测体脂率。
+### 训练与日常状态
+- 今日页面展示当天训练安排或休息日，并提供当日安全确认；报告不适或无法判断时暂停当天训练建议。该确认不会阻挡查看其他日期的计划和记录。
+- 按训练目标、经验、每周训练日、可用器械和时长生成周计划，保存当前计划并回看历史周计划。
+- 记录训练完成情况、动作、主观强度等信息；周回顾按日对照计划和实际记录，并提供由用户决定是否采纳的调整参考。
+- 动作库支持按动作信息检索。
 
-## 塑型追踪使用说明
+### 饮食与身体变化
+- 按日期记录餐食、分量、进食时间和营养值，并累计饮水。
+- 根据身体档案、饮食偏好、健康约束和已完成的饮食记录进行营养分析与饮食规划；规划结果保存为可回看的历史快照。营养信息受实际录入资料影响，不会把缺失值默认为零。
+- 记录体重、围度、体脂率、骨骼肌等实测数据，查看趋势、复测提醒、目标进度和身体照片时间线。
+- 支持周回顾和阶段报告。没有记录的数据会明确标记，不从缺失值推断结果。
 
-顶部“塑型追踪”或账号弹窗中的“查看变化”进入。先记录围度/实测体成分，再设置参考目标；同一天保存更新该天整份记录，空白代表未测量。测量历史支持修改与删除。体成分来源可选体脂秤读数（手动）、专业检测报告或其他实测记录；尚未对接任何厂商体脂秤 API。
+### AI 教练与知识库
+- AI 教练使用 LangGraph ReAct 流程，按需读取当前账号的训练、恢复、饮食和身体变化摘要，并可查询动作知识。
+- 本地知识检索使用中文 BM25；配置并授权云端检索时，可使用 Chroma 向量检索并通过 RRF 融合。
+- CRAG 在本地混合检索之后评估资料相关度。资料不足、用户本轮已授权且配置 Tavily 时，才进行联网补充；联网结果不会自动加入知识库。
+- 教练可准备饮食目标或下周训练调整草案。用户确认后才会保存变更。
+- 管理员专属的「RAG 知识库」模块支持查看文档、上传 TXT、Markdown、文本 PDF 和 DOCX、预览正文及下载原文件。上传资料立即用于本地检索；生成云端语义索引需要单独勾选同意。单文件最大 10 MiB。
+- 管理中心还支持管理员搜索用户并查看其业务资料和记录。普通用户没有这些管理入口，后端也会校验管理员身份。
 
-正面、侧面、背面照片可分次补齐，同一天同一视角保存会替换。照片时间线支持同期三视角和相同视角的历史滑动对比，同时只展示对应日期的真实测量值。照片存入本机 PostgreSQL，通过带账号验证的接口读取，重新编码去除 EXIF，不经静态目录公开，也不传给饮食 AI。数据库仍未做应用层加密。
+## 技术栈
 
-围度按各部位最后测量日期加 14 天计算复测日期，在“今日”与塑型页面内提示；没有系统推送或后台定时通知。目标进度按 `(当前值 - 起点值) / (目标值 - 起点值)` 计算，限定 0–100%，支持增加或减少目标；达到 25/50/75/100% 时记录节点，同一目标不会重复解锁。修改目标以最新实测值重新起算。4–8 周是预期引导，不承诺变化速度或结果。
+- 前端：Vue 3、TypeScript、Vite、Pinia、Vue Router、ECharts
+- 后端：Python、FastAPI、SQLAlchemy、Pydantic
+- 数据库：PostgreSQL
+- 智能体与检索：LangGraph、DashScope / 通义千问、BM25、Chroma、Tavily（可选）
 
-此次新增 `Pillow` 图片校验依赖，现有环境如未安装，请运行 `python -m pip install -r backend/requirements.txt`。构建前端并重启后端后，启动建表会创建三张独立塑型表，保留原有数据表与接口。实现与验收说明见 [塑型追踪设计与验收](../项目文档/版本设计/塑型追踪设计与验收.md)。
+## 本机配置
 
-塑型接口回归测试使用独立内存 SQLite，不会写入本机 PostgreSQL：
+需要安装 Python 3.11+、Node.js（建议 20+）、npm 和 PostgreSQL。项目默认从根目录的 `.env` 读取数据库和模型配置。
 
-```powershell
-python -m unittest discover -s backend/tests -p test_shaping.py -v
-```
+1. 启动 PostgreSQL，并创建本项目使用的数据库和账号。
+2. 在项目根目录复制模板并填写自己的连接信息：
 
-## 准备 PostgreSQL
+   macOS / Linux：
 
-1. 启动本机 PostgreSQL 服务，并连接移动硬盘（若 PostgreSQL 数据目录位于移动硬盘）。
-2. 在项目目录复制环境模板：
+   ```bash
+   cp .env.example .env
+   ```
+
+   Windows PowerShell：
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
-3. 编辑 `.env`，填写创建的 `fitness_app` 密码：
+3. 编辑 `.env` 中的 `DATABASE_URL`。按需填写 `DASHSCOPE_API_KEY`、`BOOHEE_API_KEY` 和 `TAVILY_API_KEY`。Tavily 用于 CRAG 联网补充，是可选项。模型和 Tavily 密钥仅放在后端环境变量中，不要提交到 Git。
 
-   ```text
-   DATABASE_URL=postgresql+psycopg://fitness_app:你的密码@127.0.0.1:5432/fitness_coach
-   ```
-
-   密码若含 `@`、`/`、`:`、`#` 等字符，需要进行 URL 编码。`.env` 已加入 Git 忽略列表，切勿提交真实密码。
-
-4. 首次启动时，应用会自动创建账号与业务数据表。已有单用户数据库会在第一个账号注册时迁移为按账号归属；第一个注册账号会继承旧数据。迁移会调整表结构但保留旧记录，建议先备份 PostgreSQL 数据库。
-
-## 安装与运行
+## 安装与启动
 
 在项目根目录执行：
 
-```powershell
+```bash
+# 激活你用于本项目的 Python 环境后安装后端依赖
 python -m pip install -r backend/requirements.txt
+
+# 安装前端依赖并构建
 npm --prefix web install
 npm --prefix web run build
+
+# 启动后端
 python -m uvicorn app.main:app --reload --app-dir backend
 ```
 
-浏览器打开 <http://127.0.0.1:8000>。PostgreSQL 服务必须保持运行；若数据目录在移动硬盘上，运行期间不要拔出硬盘。
+浏览器访问 <http://127.0.0.1:8000>。后端启动时会创建缺失的应用数据表，并兼容执行部分旧表结构升级；首次迁移前建议备份数据库。
 
-前端开发时，先按上面的方式启动 FastAPI，再在另一个终端启动 Vite：
-
-```powershell
-cd web
-npm run dev
-```
-
-打开 Vite 显示的本地地址。开发服务器会把 `/api` 请求代理到 `http://127.0.0.1:8000`；生产使用 FastAPI 的同源静态托管。
-
-## 当前版本边界
-
-塑型追踪已加入智能联动层：按近 4 周训练记录识别覆盖不足部位、动作库检索教练问答、训练/休息日饮食目标建议，以及自动补生成的周/月报告。数值计算由后端规则完成；AI 教练在用户授权后采用 ReAct 按需读取动作资料及训练、饮食和体测摘要，生成带依据的答复；目标和计划调整须由用户确认。完整数据流、表结构和验收步骤见 [塑型智能联动层升级与验收](../项目文档/版本设计/塑型智能联动层升级与验收.md)。
-
-这是本机流程演示，不是可供真实用户使用的健康产品。每日状态、训练日志、计划、身体档案和安全暂停按账号保存在本机 PostgreSQL；当日筛查状态保存在服务进程中，服务重启、切换账号或日期变化后需重新筛查。数据库首次注册时会把旧版单用户记录交给第一个注册账号；建议先备份数据库。密码以 PBKDF2 散列保存，会话使用签名 Cookie；健康资料未做应用层加密，暂不适合公开部署。应用不提供找回密码、账号删除或管理员控制台。只作功能演示时建议使用虚构数据；不要把计划当作医疗或个体化处方。
-
-## 版本路线
-
-- **V1.0.0**：本机可运行的 Web + FastAPI 最小闭环，数据暂存内存。
-- **V1.1.0**：接入本机 PostgreSQL，持久化每日状态和训练日志。
-- **V1.2.0**：训练历史与周回顾、训练统计、缺失数据提示和数据库异常提示（已完成人工核对）。
-- **V1.3.0**：新增本地计划说明卡片；不接入外部模型服务，已完成人工核对。
-- **V1.4.0（已完成人工核对）**：本周计划保存与重启后恢复；安全暂停仍要求重启后重新筛查。
-
-- **V1.5.0（已完成人工核对）**：按周浏览已保存的计划快照，历史读取继续受安全筛查保护。
-- **V1.6.0（已完成人工核对）**：每日筛查跨日失效，安全暂停持久化到 PostgreSQL。
-- **V1.7.0（已完成人工核对）**：周计划按用户选择的经验、器械和单次时长调整；保存偏好与计划快照，全站通知使用居中弹窗.
-- **V1.8.0（已完成人工核对）**：选择每周具体训练星期，周视图标明训练日和休息日；保存星期偏好，并在计划快照中保留当时安排。
-- **V1.9.0（功能调整中，身体档案改动待人工核对）**：今日页显示当天的计划会话或休息日；计划休息日无需记录每日状态，安全筛查仍需完成。
-- **V2**：评估账号、数据授权与删除、数据库迁移管理及正式部署。
-- **后续**：依据用户反馈评估小程序与健康数据接入。
-
-开发问题记录见 [问题与解决方案](../项目文档/开发记录/问题与解决方案.md)；版本路线见 [版本路线图](../项目文档/版本路线/roadmap.md)。
-
-
-
-
-
-## 阅读代码与注释约定
-
-- 建议从 `backend/app/main.py` 了解接口流程，从 `backend/app/database.py` 了解 PostgreSQL 表和会话，再看 `web/src/api`、`web/src/stores` 和 `web/src/views` 如何调用接口并呈现页面。
-- 新增或修改代码时，同步写简明中文注释，说明模块职责、关键数据流，以及不容易从代码本身看出的业务约束（尤其是安全门禁和数据保存规则）。
-- 注释解释“为什么这样处理”或“需要注意什么”，不逐行复述代码；空的规划占位文件等开始实现时再补充对应说明。
-# Exercise RAG knowledge base
-
-The coach Q&A retrieves from both the structured exercise library and reviewed, paraphrased summaries of public training guidance. The reviewed source catalog is `backend/data/exercise_knowledge_seed.json`; each external summary stores its publisher, publication date when available, source URL, and rights note. Do not copy full articles into the corpus. Add or revise a summary there, then restart the backend to sync it into PostgreSQL.
-
-Retrieval always runs Chinese BM25 locally. Vectors are stored in a local persistent Chroma collection at `backend/.chroma` (configurable through `EXERCISE_RAG_CHROMA_PATH`). If the user checks the cloud consent box, the question may also be embedded with DashScope and fused with BM25 using reciprocal-rank fusion (RRF); the consent checkbox also controls sending the question and retrieved excerpts to the Qwen answer model. Medical/injury questions bypass retrieval and the model. No consent means no question is sent to DashScope.
-
-To build/rebuild semantic vectors after setting `DASHSCOPE_API_KEY` in the project `.env` and installing `backend/requirements.txt`:
-
-```powershell
-python backend/scripts/index_exercise_knowledge.py
-# Re-embed every approved document into Chroma:
-python backend/scripts/index_exercise_knowledge.py --force
-```
-
-The app remains usable with BM25 if the Chroma index has not been built. On first startup, the backend creates/syncs the `exercise_knowledge_documents` table after seeding the exercise library. Existing installations can also apply `backend/migrations/20261020_exercise_knowledge_documents.sql` manually; ORM startup uses `create_all` as before. The SQL table stores document text and source metadata, while Chroma stores embeddings. Retrieved source cards show the source title, publisher, date, excerpt, and original link.
-
-
-## AI 教练 ReAct
-
-教练沿用项目 .env 中的 SHAPING_AGENT_MODEL（未设置时沿用 DIET_AGENT_MODEL）和 DASHSCOPE_API_KEY。勾选摘要授权后，可按需查询周计划、训练、恢复、饮食、身体变化与动作知识；每轮最多4次工具调用。工具仅能读取当前登录账号的数据。
-
-回复可准备今日饮食目标或下周训练调整草案。采纳前展示具体数值及影响范围，用户确认后重新校验源数据并保存；草案15分钟过期。未授权或模型失败时保留本地检索降级。
-
-后端新增表的建表SQL位于 backend/migrations/20261022_coach_action_drafts.sql；正常启动也会通过ORM创建该表。工具循环、数据查询、草案处理分别位于 backend/app/services/coach_react.py、coach_data.py、coach_actions.py。完整说明在工作区项目文档/技术说明/AI教练ReAct升级说明.md。
-
-隔离验证命令（项目根目录）：
-D:/Anaconda/envs/agent_env/python.exe -m unittest discover -s backend/tests -p test_coach_react.py -v
-
-隔离测试使用内存SQLite和脚本模型，不连接实际千问服务或开发数据库。
-
-
-## 管理员用户管理
-
-新增管理员用户目录与 28 类业务记录的只读查看。使用管理员登录后自动进入管理中心，也可从侧栏或头像菜单进入；普通用户无管理入口，后端会拒绝普通用户的跨账号管理请求。账号密码、散列及盐不返回。
-
-本机管理员通过 agent_env 下的命令创建与授权：
+开发前端时，另开终端在项目根目录运行：
 
 ```bash
-python backend/scripts/manage_admin.py create <用户名>
-python backend/scripts/manage_admin.py grant <已有用户名>
-python backend/scripts/manage_admin.py revoke <已有用户名>
+npm --prefix web run dev
 ```
 
-旧数据库启动时自动添加 is_admin 字段，已有账号默认为普通用户。详情见 [管理员功能说明](../项目文档/技术说明/管理员功能说明.md)。
+打开 Vite 输出的开发地址。Vite 会将 `/api` 请求代理到本机 FastAPI 服务。
 
-## 管理员 RAG 知识库
+## 管理员
 
-管理员可在 `/#/admin/knowledge` 查看知识文档，上传 TXT、MD、文本PDF及DOCX，并下载原文件。上传后立即用于本地检索；明确同意后可生成云端语义索引。普通用户无管理入口且接口禁止访问。详见 [知识库说明](../项目文档/技术说明/管理员RAG知识库说明.md)。
+普通注册账号默认是普通用户。管理员账号通过后端脚本在本机创建或授权，不要通过修改前端代码授予权限：
+
+```bash
+# 创建管理员，执行时会安全地提示设置密码
+python backend/scripts/manage_admin.py create <用户名>
+
+# 管理已有账号权限
+python backend/scripts/manage_admin.py grant <用户名>
+python backend/scripts/manage_admin.py revoke <用户名>
+```
+
+## 测试
+
+在项目根目录执行：
+
+```bash
+python -m unittest discover -s backend/tests -v
+npm --prefix web test
+npm --prefix web run build
+```
+
+测试中的后端 API 使用独立测试数据库；涉及云端服务的测试使用模拟对象。
+
+## 隐私与使用边界
+
+这是本机演示项目，不是医疗产品，也不适合直接公开部署。账号业务数据保存在 PostgreSQL；密码使用 PBKDF2 散列，会话使用签名 Cookie。健康资料当前没有应用层加密。管理员可以查看用户业务资料；上传的知识文档是共享资料，可能用于所有用户的教练答复。
+
+AI 请求受页面授权和功能设置约束。授权后，相关问题和检索资料可能发送至已配置的模型服务；CRAG 的 Tavily 查询只使用本轮问题文本，不包含教练工具读取到的个人业务记录。不要向云端服务发送真实敏感信息，也不要把训练或营养建议当作医疗诊断或个体化处方。
+
+项目设计、测试手册及开发记录维护在工作区的「项目文档」目录中。
