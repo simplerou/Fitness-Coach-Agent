@@ -11,5 +11,7 @@ import './styles/dashboard-layout.css'
 import './styles/dashboard-components.css'
 import './styles/form-controls.css'
 import './styles/coach-floating.css'
+import './styles/admin.css'
+import './styles/admin-knowledge.css'
 
 createApp(App).use(createPinia()).use(router).mount('#app')

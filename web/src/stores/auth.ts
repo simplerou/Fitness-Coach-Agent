@@ -11,6 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const initialized = ref(false)
   const sessionError = ref<string | null>(null)
   const isAuthenticated = computed(() => user.value !== null)
+  const isAdmin = computed(() => user.value?.is_admin === true)
 
   async function initializeSession(): Promise<void> {
     sessionError.value = null
@@ -86,6 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialized,
     sessionError,
     isAuthenticated,
+    isAdmin,
     initializeSession,
     login,
     register,

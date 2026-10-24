@@ -111,7 +111,7 @@ function skipFirstProfile(): void {
 
 <template>
   <section class="page active profile-view" :class="{ 'is-embedded': embedded }">
-    <PageHeader v-if="!embedded" title="设置与身体档案" :breadcrumbs="['设置', '身体档案']" description="管理基础档案、体重与个人目标"><template #actions><button class="button button-quiet" type="button" @click="router.push({ name: 'today' })">返回概览</button></template></PageHeader>
+    <PageHeader v-if="!embedded" title="设置与身体档案" description="管理基础档案、体重与个人目标"><template #actions><button class="button button-quiet" type="button" @click="router.push({ name: 'today' })">返回概览</button></template></PageHeader>
     <article class="panel">
       <div class="panel-head"><div><p class="eyebrow">GETTING STARTED</p><h3>{{ isFirstProfile ? '填写个人身体档案' : '编辑个人身体档案' }}</h3></div></div>
       <p class="profile-modal-intro">填写年龄、身高和当前体重；生理性别可留空。BMI 参考值会根据身高和体重计算，不需要填写体脂率或腰围。饮食规划会读取这里的年龄和性别。</p>

@@ -10,6 +10,9 @@ from ..schemas.auth import RegisterRequest, LoginRequest, DeleteAccountRequest
 from ..services.safety_service import SCREENING_DATES
 
 
+def serialize_auth_user(user):
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "is_admin": user.is_admin}
+
 def create_auth_router(authenticated_user_id, session_factory):
     router = APIRouter()
     SessionLocal = session_factory
@@ -30,6 +33,7 @@ def create_auth_router(authenticated_user_id, session_factory):
                 display_name=display_name,
                 password_hash=password_hash_value,
                 password_salt=salt,
+                is_admin=False,
             )
             db.add(user)
             db.flush()
@@ -38,10 +42,11 @@ def create_auth_router(authenticated_user_id, session_factory):
             initialize_user_defaults(db, user.id, date.today())
             db.commit()
             user_id = user.id
+            user_data = serialize_auth_user(user)
         request.session.clear()
         request.session["user_id"] = user_id
         SCREENING_DATES.pop(user_id, None)
-        return {"user": {"id": user_id, "username": username, "display_name": display_name}}
+        return {"user": user_data}
 
     @router.post("/api/auth/login")
     def login_account(payload: LoginRequest, request: Request) -> dict:
@@ -53,17 +58,19 @@ def create_auth_router(authenticated_user_id, session_factory):
                 verify_password(payload.password, "00" * 24, "00" * 64)
                 raise HTTPException(status_code=401, detail="用户名或密码不正确。")
             user_id = user.id
-            display_name = user.display_name
+            user_data = serialize_auth_user(user)
         request.session.clear()
         request.session["user_id"] = user_id
         SCREENING_DATES.pop(user_id, None)
-        return {"user": {"id": user_id, "username": username, "display_name": display_name}}
+        return {"user": user_data}
 
     @router.get("/api/auth/me")
     def current_account(user_id: int = Depends(authenticated_user_id)) -> dict:
         with SessionLocal() as db:
             user = db.get(AccountUserRecord, user_id)
-            return {"user": {"id": user.id, "username": user.username, "display_name": user.display_name}}
+            if user is None:
+                raise HTTPException(401, "登录状态已失效，请重新登录。")
+            return {"user": serialize_auth_user(user)}
 
     @router.post("/api/auth/logout")
     def logout_account(request: Request, user_id: int = Depends(authenticated_user_id)) -> dict:

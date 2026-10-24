@@ -1,4 +1,4 @@
-﻿# 数据库模块：管理 PostgreSQL 连接、ORM 表结构、租户迁移和用户初始化。
+# 数据库模块：管理 PostgreSQL 连接、ORM 表结构、租户迁移和用户初始化。
 from __future__ import annotations
 
 import os
@@ -20,6 +20,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 from .models.base import Base
+from .models.knowledge import KnowledgeUploadRecord
 from .models.user_profile import AccountUserRecord, LocalProfileRecord, BodyProfileRecord, BodyWeightHistoryRecord
 from .models.daily_signal import DailySignalRecord
 from .models.training_log import TrainingLogRecord
@@ -54,6 +55,9 @@ def initialize_database() -> None:
 
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE account_users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("ALTER TABLE exercise_knowledge_documents ADD COLUMN IF NOT EXISTS upload_id INTEGER REFERENCES knowledge_uploads(id) ON DELETE CASCADE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_exercise_knowledge_documents_upload_id ON exercise_knowledge_documents(upload_id)"))
         for table_name in TENANT_TABLES:
             connection.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS user_id INTEGER'))
         connection.execute(text('ALTER TABLE local_safety_state ADD COLUMN IF NOT EXISTS hold_date DATE'))

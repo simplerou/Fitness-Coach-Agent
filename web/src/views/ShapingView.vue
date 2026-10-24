@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { reportModule, moduleTitle } from '@/utils/moduleNavigation'
 import PageHeader from '@/components/ui/PageHeader.vue'
-import ReportTabs from '@/components/shaping/ReportTabs.vue'
 import ShapeTrendDashboard from '@/components/shaping/ShapeTrendDashboard.vue'
 import MeasurementDialog from '@/components/shaping/MeasurementDialog.vue'
 import CircumferencePanel from '@/components/shaping/CircumferencePanel.vue'
@@ -21,13 +21,7 @@ const shaping = useShapingStore()
 const route = useRoute()
 const router = useRouter()
 const measurement = ref<InstanceType<typeof MeasurementDialog> | null>(null)
-const tab = computed(() => {
-  const requested = String(route.query.tab || '')
-  if (['trend', 'measurements', 'review'].includes(requested)) return requested
-  if (['measurements', 'photos'].includes(String(route.query.section || ''))) return 'measurements'
-  if (['reports', 'coach'].includes(String(route.query.section || ''))) return 'review'
-  return 'trend'
-})
+const tab = computed(() => reportModule(route.query))
 const due = computed(() => shaping.reminders.filter((item) => item.due))
 const dueNames = computed(() => due.value.map((item) => SHAPE_LABELS[item.metric]).join('、'))
 async function reload() { try { await shaping.load() } catch { /* 错误在页面内展示 */ } }
@@ -37,10 +31,9 @@ onMounted(async () => { await reload(); if (route.query.action === 'record') mea
 
 <template>
   <section class="page active report-workspace">
-    <PageHeader title="效果报告" :breadcrumbs="['报告', tab === 'trend' ? '趋势' : tab === 'measurements' ? '体测' : '周回顾']" description="用同条件下的连续记录观察变化">
+    <PageHeader :title="moduleTitle(route)" :description="tab === 'trend' ? '查看体重与身体指标趋势，观察长期变化' : tab === 'measurements' ? '记录围度、体成分与对比照片，追踪身体变化' : '回顾本周训练、饮食与恢复情况，了解执行表现'">
       <template #actions><button v-if="tab === 'measurements'" class="button button-primary" :disabled="shaping.saving" @click="measurement?.open(localDateString())">记录测量</button><button class="button button-quiet" :disabled="shaping.loading" @click="reload">刷新</button></template>
     </PageHeader>
-    <ReportTabs />
     <div v-if="shaping.error" class="error-state" role="alert"><span>{{ shaping.error }}</span><button class="button button-quiet" @click="reload">重试</button></div>
     <div v-else-if="shaping.loading && !shaping.data" class="loading-skeleton report-loading" />
     <template v-else-if="shaping.data">

@@ -16,7 +16,7 @@ onMounted(() => void home.load())
 
 <template>
   <section class="page active overview-page">
-    <PageHeader title="今日概览" :breadcrumbs="['概览']" description="今天的行动、摄入和长期变化">
+    <PageHeader title="今日概览" description="今天的行动、摄入和长期变化">
       <template #actions><button class="button button-quiet" :disabled="home.loading" @click="home.load">刷新数据</button></template>
     </PageHeader>
     <div v-if="home.loading" class="overview-stat-grid" aria-label="正在加载"><div v-for="index in 4" :key="index" class="loading-skeleton" /></div>

@@ -12,7 +12,8 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   let response: Response
   try {
     const headers = new Headers(init.headers)
-    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+    const multipart = typeof FormData !== 'undefined' && init.body instanceof FormData
+    if (!headers.has('Content-Type') && !multipart) headers.set('Content-Type', 'application/json')
     response = await fetch(path, {
       ...init,
       credentials: 'same-origin',

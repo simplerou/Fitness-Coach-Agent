@@ -7,7 +7,6 @@ import { useNotice } from '@/composables/useNotice'
 import PlanSettingsForm from '@/components/plan/PlanSettingsForm.vue'
 import PlanHistoryList from '@/components/plan/PlanHistoryList.vue'
 import WeeklyPlanBoard from '@/components/plan/WeeklyPlanBoard.vue'
-import TrainingTabs from '@/components/training/TrainingTabs.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import SectionCard from '@/components/ui/SectionCard.vue'
 
@@ -29,8 +28,7 @@ async function generate(): Promise<void> {
 
 <template>
   <section class="page active">
-    <PageHeader :title="showingHistory ? '历史周计划' : '训练编排'" :breadcrumbs="showingHistory ? ['训练', '历史周计划'] : ['训练', '周计划']" />
-    <TrainingTabs />
+    <PageHeader :title="showingHistory ? '历史周计划' : '周计划'" :description="showingHistory ? '查看已保存的历周计划与训练安排' : '查看本周训练安排，按个人偏好生成计划'" />
     <PlanHistoryList v-if="showingHistory" />
     <template v-else>
       <SectionCard title="本周安排" :subtitle="plan.currentWeekStart ? `${plan.currentWeekStart} 至 ${shiftDate(plan.currentWeekStart, 6)}` : '还没有生成计划'">

@@ -138,3 +138,22 @@ The app remains usable with BM25 if the Chroma index has not been built. On firs
 D:/Anaconda/envs/agent_env/python.exe -m unittest discover -s backend/tests -p test_coach_react.py -v
 
 隔离测试使用内存SQLite和脚本模型，不连接实际千问服务或开发数据库。
+
+
+## 管理员用户管理
+
+新增管理员用户目录与 28 类业务记录的只读查看。使用管理员登录后自动进入管理中心，也可从侧栏或头像菜单进入；普通用户无管理入口，后端会拒绝普通用户的跨账号管理请求。账号密码、散列及盐不返回。
+
+本机管理员通过 agent_env 下的命令创建与授权：
+
+```bash
+python backend/scripts/manage_admin.py create <用户名>
+python backend/scripts/manage_admin.py grant <已有用户名>
+python backend/scripts/manage_admin.py revoke <已有用户名>
+```
+
+旧数据库启动时自动添加 is_admin 字段，已有账号默认为普通用户。详情见 [管理员功能说明](../项目文档/技术说明/管理员功能说明.md)。
+
+## 管理员 RAG 知识库
+
+管理员可在 `/#/admin/knowledge` 查看知识文档，上传 TXT、MD、文本PDF及DOCX，并下载原文件。上传后立即用于本地检索；明确同意后可生成云端语义索引。普通用户无管理入口且接口禁止访问。详见 [知识库说明](../项目文档/技术说明/管理员RAG知识库说明.md)。

@@ -1,4 +1,4 @@
-﻿"""FastAPI application wiring, session authentication and SPA hosting."""
+"""FastAPI application wiring, session authentication and SPA hosting."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -14,6 +14,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .api.coach import create_coach_router
 from .api.auth import create_auth_router
+from .api.admin import create_admin_router
+from .api.admin_knowledge import create_admin_knowledge_router
 from .api.safety import create_safety_router
 from .api.daily_signal import create_daily_signal_router
 from .api.plan import create_plan_router
@@ -93,6 +95,8 @@ async def database_error_handler(_, __):
 
 app.include_router(create_coach_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_auth_router(authenticated_user_id, lambda: SessionLocal()))
+app.include_router(create_admin_router(authenticated_user_id, lambda: SessionLocal()))
+app.include_router(create_admin_knowledge_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_safety_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_daily_signal_router(authenticated_user_id, lambda: SessionLocal()))
 app.include_router(create_plan_router(authenticated_user_id, lambda: SessionLocal()))

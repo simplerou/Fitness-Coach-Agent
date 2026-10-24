@@ -28,13 +28,16 @@ const authMode = ref<'login' | 'register' | null>(null)
 const previousVisibilityHandler = document.onvisibilitychange
 document.onvisibilitychange = () => { if (!document.hidden) { if (auth.isAuthenticated) void safety.refreshToday(); shaping.refreshReminderDate() } }
 watch(() => auth.isAuthenticated, (authenticated) => {
-  if (authenticated) authMode.value = null
+  if (authenticated) {
+    authMode.value = null
+    if (auth.isAdmin && !route.meta.requiresAdmin) void router.replace({ name: 'admin' })
+  }
 })
 watch(authMode, (mode) => {
   document.body.classList.toggle('auth-open', mode !== null)
 })
 watch(() => [auth.initialized, auth.user?.id] as const, async ([initialized, userId]) => {
-  if (!initialized || !userId || onboardingCheckedFor === userId) return
+  if (!initialized || !userId || auth.isAdmin || onboardingCheckedFor === userId) return
   onboardingCheckedFor = userId
   try {
     await profile.load()
@@ -46,7 +49,7 @@ watch(() => [auth.initialized, auth.user?.id] as const, async ([initialized, use
 watch(() => route.name, () => { if (auth.isAuthenticated) void safety.refreshToday(); shaping.refreshReminderDate() })
 onMounted(() => {
   stopCrossTabSync = auth.bindCrossTabSync()
-  void auth.initializeSession()
+  if (!auth.initialized) void auth.initializeSession()
 })
 onBeforeUnmount(() => {
   stopCrossTabSync?.()

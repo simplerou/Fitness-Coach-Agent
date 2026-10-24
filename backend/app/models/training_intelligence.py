@@ -35,6 +35,7 @@ class ExerciseKnowledgeDocumentRecord(Base):
     document_key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     exercise_id: Mapped[int | None] = mapped_column(ForeignKey("exercise_library.id", ondelete="SET NULL"), nullable=True, index=True)
+    upload_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_uploads.id", ondelete="CASCADE"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     source_name: Mapped[str] = mapped_column(String(180), nullable=False)

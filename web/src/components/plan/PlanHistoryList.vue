@@ -19,3 +19,8 @@ const plan = usePlanStore()
     <button v-if="plan.historyCursor" class="button button-quiet" type="button" :disabled="plan.historyLoading" @click="plan.loadHistory(false)">加载更早计划</button>
   </article>
 </template>
+
+<style scoped>
+.plan-history-list.empty-state { align-content: center; justify-items: center; }
+.plan-history-list.empty-state p { margin: 0; }
+</style>

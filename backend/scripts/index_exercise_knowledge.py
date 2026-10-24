@@ -17,6 +17,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from app.database import SessionLocal, initialize_database
 from app.models.training_intelligence import ExerciseKnowledgeDocumentRecord
+from app.models.knowledge import KnowledgeUploadRecord
+from datetime import datetime, timezone
 from app.services.exercise_knowledge import EMBEDDING_MODEL, get_vector_collection
 
 
@@ -64,7 +66,22 @@ def main() -> int:
                 documents=[f"{row.title}\n{row.body}" for row in batch], embeddings=vectors,
                 metadatas=[{"source_type": row.source_type, "content_hash": row.content_hash,
                             "embedding_model": EMBEDDING_MODEL} for row in batch])
+            for row in batch:
+                indexed_metadata[row.document_key] = {"content_hash": row.content_hash, "embedding_model": EMBEDDING_MODEL}
             print(f"Indexed {min(start + len(batch), len(rows_to_index))}/{len(rows_to_index)} documents")
+        for upload in db.scalars(select(KnowledgeUploadRecord)).all():
+            documents = [row for row in rows if row.upload_id == upload.id]
+            if documents and all(
+                indexed_metadata.get(row.document_key, {}).get("content_hash") == row.content_hash
+                and indexed_metadata.get(row.document_key, {}).get("embedding_model") == EMBEDDING_MODEL
+                for row in documents
+            ):
+                upload.index_status = "indexed"
+                upload.index_model = EMBEDDING_MODEL
+                upload.indexed_at = datetime.now(timezone.utc)
+                upload.index_started_at = None
+                upload.index_error = None
+        db.commit()
         print(f"Done. {len(rows_to_index)} document(s) stored in Chroma using {EMBEDDING_MODEL}.")
     return 0
 

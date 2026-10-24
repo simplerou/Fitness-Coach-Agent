@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func, false
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
@@ -17,6 +17,7 @@ class AccountUserRecord(Base):
     display_name: Mapped[str] = mapped_column(String(48), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     password_salt: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

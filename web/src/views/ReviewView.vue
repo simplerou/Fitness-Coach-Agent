@@ -7,7 +7,6 @@ import { useNotice } from '@/composables/useNotice'
 import { shiftDate } from '@/utils/date'
 import PlanAdjustmentPreview from '@/components/training/PlanAdjustmentPreview.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
-import ReportTabs from '@/components/shaping/ReportTabs.vue'
 
 const review = useReviewStore()
 const plan = usePlanStore()
@@ -63,7 +62,7 @@ async function applySuggestion(): Promise<void> {
 
 <template>
   <section class="page active">
-    <template v-if="!embedded"><PageHeader title="周回顾" :breadcrumbs="['报告', '周回顾']" description="缺失数据会明确标记为未记录"/><ReportTabs /></template>
+    <template v-if="!embedded"><PageHeader title="周回顾" description="回顾本周训练、饮食与恢复情况，了解执行表现"/></template>
     <article class="panel review-controls"><div class="panel-head"><div><p class="eyebrow">WEEK RANGE</p><h3>{{ result ? `${result.week_start} 至 ${result.week_end}` : '选择回顾日期' }}</h3></div></div><div class="review-date-controls"><button class="button button-quiet" type="button" :disabled="previousDisabled" @click="review.moveWeek(-1)">上一周</button><label class="field"><span>选择日期</span><input v-model="review.selectedDate" type="date" @change="review.load" /></label><button class="button button-quiet" type="button" @click="review.currentWeek">本周</button><button class="button button-quiet" type="button" :disabled="review.loading" @click="review.load">刷新</button></div><p v-if="result" id="review-range" class="fine-print">可查看自 {{ result.registration_date }}</p><p v-if="review.error" class="review-error" role="alert">{{ review.error }}</p></article>
     <div v-if="summary" id="review-stats" class="review-stats">
       <article v-for="item in [['日志条数', `${summary.session_count} 条`], ['按计划完成', `${summary.completed_count} 次`], ['部分完成', `${summary.partial_count} 次`], ['未进行', `${summary.skipped_count} 次`], ['平均 RPE', summary.average_rpe == null ? `未记录（${summary.rpe_count} 条）` : `${summary.average_rpe} / 10（${summary.rpe_count} 条）`], ['饮食记录', `${summary.diet_meal_count} 餐 · ${summary.diet_days_with_meals} 天`], ['饮水记录', summary.diet_water_total_ml == null ? '未记录' : `${summary.diet_water_total_ml} 毫升 · ${summary.diet_water_days_logged} 天`], ['饮食完整日', `${summary.diet_days_marked_complete} 天`], ['体重记录', `${summary.weight_days_logged} 天`]]" :key="item[0]" class="panel review-stat"><span>{{ item[0] }}</span><b>{{ item[1] }}</b></article>

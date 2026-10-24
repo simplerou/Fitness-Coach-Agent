@@ -134,7 +134,7 @@ class CoachTests(unittest.TestCase):
         model = ScriptedModel([("prepare_diet_target", {})], ["diet_target"])
         with patch.dict(os.environ, {"DASHSCOPE_API_KEY": "synthetic-test-key"}), \
              patch("langchain_openai.ChatOpenAI", return_value=model), \
-             patch("app.api.coach.retrieve_documents", return_value=([], None)):
+             patch("app.api.coach.retrieve_with_crag", return_value=([], None, {"status": "local_only", "local_relevance": 0.0, "tavily_used": False})):
             response = self.client.post("/api/shaping/intelligence/qa", json={
                 "question": "按今天安排生成饮食目标草案", "privacy_consent": True,
                 "context": {"page": "diet", "selected_date": self.day.isoformat()}})
@@ -178,7 +178,7 @@ class CoachTests(unittest.TestCase):
         model = ScriptedModel([("prepare_next_week_plan", {})], ["plan_adjustment"])
         with patch.dict(os.environ, {"DASHSCOPE_API_KEY": "synthetic-test-key"}), \
              patch("langchain_openai.ChatOpenAI", return_value=model), \
-             patch("app.api.coach.retrieve_documents", return_value=([], None)):
+             patch("app.api.coach.retrieve_with_crag", return_value=([], None, {"status": "local_only", "local_relevance": 0.0, "tavily_used": False})):
             response = self.client.post("/api/shaping/intelligence/qa", json={
                 "question": "生成下周训练调整草案", "privacy_consent": True})
         self.assertEqual(response.status_code, 200, response.text)

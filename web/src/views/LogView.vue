@@ -10,7 +10,6 @@ import ExerciseEntryEditor from '@/components/training/ExerciseEntryEditor.vue'
 import RecoveryCheckinDialog from '@/components/training/RecoveryCheckinDialog.vue'
 import RecoveryPanel from '@/components/training/RecoveryPanel.vue'
 import type { ExerciseEntryPayload, LogCompletion, RecoveryPayload, SkipReason } from '@/api/types'
-import TrainingTabs from '@/components/training/TrainingTabs.vue'
 import TrainingRecordsTable from '@/components/training/TrainingRecordsTable.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import SectionCard from '@/components/ui/SectionCard.vue'
@@ -72,8 +71,7 @@ async function save(recovery: RecoveryPayload): Promise<void> {
 
 <template>
   <section class="page active training-workspace">
-    <PageHeader title="训练记录" :breadcrumbs="['训练', '训练记录']" />
-    <TrainingTabs />
+    <PageHeader title="训练记录" description="记录每日训练与动作完成情况，回顾训练表现" />
     <RecoveryPanel :summary="training.recovery" />
     <div class="training-record-layout">
       <SectionCard title="记录本次训练" subtitle="保存后会生成恢复与进阶建议">

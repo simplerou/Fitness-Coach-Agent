@@ -9,6 +9,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ProfileView from '@/views/ProfileView.vue'
 import { useProfileWindow } from '@/composables/useProfileWindow'
 import NavIcon from './NavIcon.vue'
+import { moduleTitle } from '@/utils/moduleNavigation'
 
 defineEmits<{ menu: []; search: [] }>()
 const auth = useAuthStore()
@@ -22,12 +23,7 @@ const deleteAccountDialog = ref<InstanceType<typeof DeleteAccountDialog> | null>
 const avatar = ref('')
 const profileMenuOpen = ref(false)
 let closeTimer: number | null = null
-const labels: Record<string, { title: string; parent?: string }> = {
-  today: { title: '概览' }, plan: { title: '训练', parent: '周计划' }, log: { title: '训练', parent: '训练记录' },
-  diet: { title: '饮食' }, shaping: { title: '报告', parent: '趋势与体测' }, review: { title: '报告', parent: '周回顾' },
-  library: { title: '动作库' }, profile: { title: '设置', parent: '身体档案' },
-}
-const page = computed(() => labels[String(route.name)] || { title: '青禾训练助理' })
+const pageTitle = computed(() => moduleTitle(route))
 const dateLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())
 watch(() => auth.user?.id, (id) => {
   try { avatar.value = id ? localStorage.getItem(`fitnessCoachAvatar:${id}`) || '' : '' } catch { avatar.value = '' }
@@ -64,7 +60,7 @@ onBeforeUnmount(() => { if (closeTimer !== null) window.clearTimeout(closeTimer)
   <header class="dashboard-topbar">
     <div class="topbar-title">
       <button class="mobile-menu" aria-label="打开导航" @click="$emit('menu')"><NavIcon name="menu" /></button>
-      <div><small>青禾训练助理 / {{ page.parent || page.title }}</small><h1>{{ page.title }}</h1></div>
+      <div><h1>{{ pageTitle }}</h1></div>
     </div>
     <div class="topbar-actions">
       <span class="topbar-date">{{ dateLabel }}</span>
